@@ -3,7 +3,7 @@
 
 #include "../../../src/raft/err.h"
 #include "../lib/heap.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /* An error messages which is 249 characters. */
 #define LONG_ERRMSG                                                          \

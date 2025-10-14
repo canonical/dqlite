@@ -1,11 +1,10 @@
 #ifndef LIB_REGISTRY_H_
 #define LIB_REGISTRY_H_
 
+#include <sqlite3.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-
-#include <sqlite3.h>
 
 #include "../../include/dqlite.h"
 
@@ -59,7 +58,7 @@
 #define REGISTRY_METHODS(NAME, TYPE)                                         \
 	void NAME##_init(struct NAME *r)                                     \
 	{                                                                    \
-		assert(r != NULL);                                           \
+		dqlite_assert(r != NULL);                                           \
                                                                              \
 		r->buf = NULL;                                               \
 		r->len = 0;                                                  \
@@ -71,7 +70,7 @@
 		size_t i;                                                    \
 		struct TYPE *item;                                           \
                                                                              \
-		assert(r != NULL);                                           \
+		dqlite_assert(r != NULL);                                           \
                                                                              \
 		/* Loop through all items currently in the registry,         \
 		 * and close them. */                                        \
@@ -99,8 +98,8 @@
 		size_t cap;                                                  \
 		size_t i;                                                    \
                                                                              \
-		assert(r != NULL);                                           \
-		assert(item != NULL);                                        \
+		dqlite_assert(r != NULL);                                           \
+		dqlite_assert(item != NULL);                                        \
                                                                              \
 		/* Check if there is an unllocated slot. */                  \
 		for (i = 0; i < r->len; i++) {                               \
@@ -110,7 +109,7 @@
 		}                                                            \
                                                                              \
 		/* There are no unallocated slots. */                        \
-		assert(i == r->len);                                         \
+		dqlite_assert(i == r->len);                                         \
                                                                              \
 		/* If we are full, then	 double the capacity. */             \
 		if (r->len + 1 > r->cap) {                                   \
@@ -126,7 +125,7 @@
 		r->len++;                                                    \
                                                                              \
 	ok_slot:                                                             \
-		assert(i < r->len);                                          \
+		dqlite_assert(i < r->len);                                          \
                                                                              \
 		/* Allocate and initialize the new item */                   \
 		*item = sqlite3_malloc(sizeof **item);                       \
@@ -148,7 +147,7 @@
 		struct TYPE *item;                                           \
 		size_t i = id;                                               \
                                                                              \
-		assert(r != NULL);                                           \
+		dqlite_assert(r != NULL);                                           \
                                                                              \
 		if (i >= r->len) {                                           \
 			return NULL;                                         \
@@ -156,7 +155,7 @@
                                                                              \
 		item = *(r->buf + i);                                        \
                                                                              \
-		assert(item->id == id);                                      \
+		dqlite_assert(item->id == id);                                      \
                                                                              \
 		return item;                                                 \
 	}                                                                    \
@@ -165,9 +164,9 @@
 	{                                                                    \
 		struct TYPE *item;                                           \
                                                                              \
-		assert(r != NULL);                                           \
-		assert(key != NULL);                                         \
-		assert(i != NULL);                                           \
+		dqlite_assert(r != NULL);                                           \
+		dqlite_assert(key != NULL);                                         \
+		dqlite_assert(i != NULL);                                           \
                                                                              \
 		for (*i = 0; *i < r->len; (*i)++) {                          \
 			const char *hash;                                    \
@@ -194,7 +193,7 @@
 		size_t cap;                                                  \
 		size_t i = item->id;                                         \
                                                                              \
-		assert(r != NULL);                                           \
+		dqlite_assert(r != NULL);                                           \
                                                                              \
 		if (i >= r->len) {                                           \
 			return DQLITE_NOTFOUND;                              \

@@ -1,4 +1,4 @@
-#include "assert.h"
+#include "../lib/assert.h"
 #include "byte.h"
 #include "uv.h"
 #include "uv_encoding.h"
@@ -66,7 +66,7 @@ static int uvMetadataLoadN(const char *dir,
 	bool exists;
 	int rv;
 
-	assert(n == 1 || n == 2);
+	dqlite_assert(n == 1 || n == 2);
 
 	/* Render the metadata path */
 	uvMetadataFilename(n, filename);
@@ -182,7 +182,7 @@ int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata)
 	unsigned short n;
 	int rv;
 
-	assert(metadata->version > 0);
+	dqlite_assert(metadata->version > 0);
 
 	/* Encode the given metadata. */
 	uvMetadataEncode(metadata, content);

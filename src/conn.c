@@ -1,14 +1,15 @@
+#include <uv.h>
+
 #include "conn.h"
 #include "gateway.h"
 #include "leader.h"
+#include "lib/assert.h"
 #include "message.h"
 #include "protocol.h"
 #include "request.h"
 #include "tracing.h"
 #include "transport.h"
 #include "utils.h"
-
-#include <uv.h>
 
 #define conn_trace(C, fmt, ...) tracef("[conn %p] "fmt, C, ##__VA_ARGS__)
 
@@ -68,7 +69,7 @@ static void gateway_handle_cb(struct handle *req,
 	uv_buf_t buf;
 	int rv;
 
-	assert(schema <= req->schema);
+	dqlite_assert(schema <= req->schema);
 
 	/* Ignore results firing after we started closing. */
 	if (c->closed) {
@@ -77,7 +78,7 @@ static void gateway_handle_cb(struct handle *req,
 	}
 
 	n = buffer__offset(&c->write) - message__sizeof(&c->response);
-	assert(n % 8 == 0);
+	dqlite_assert(n % 8 == 0);
 
 	c->response.type = type;
 	c->response.words = (uint32_t)(n / 8);
@@ -201,7 +202,7 @@ static void read_message_cb(struct transport *transport, int status)
 	cursor.cap = buffer__offset(&c->read);
 
 	rv = message__decode(&cursor, &c->request);
-	assert(rv == 0); /* Can't fail, we know we have enough bytes */
+	dqlite_assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	rv = read_request(c);
 	if (rv != 0) {
@@ -245,7 +246,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 	cursor.cap = buffer__offset(&c->read);
 
 	rv = uint64__decode(&cursor, &c->protocol);
-	assert(rv == 0); /* Can't fail, we know we have enough bytes */
+	dqlite_assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION &&
 	    c->protocol != DQLITE_PROTOCOL_VERSION_LEGACY) {

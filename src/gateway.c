@@ -1,9 +1,10 @@
-#include "gateway.h"
 #include <sqlite3.h>
 
 #include "bind.h"
 #include "db.h"
+#include "gateway.h"
 #include "leader.h"
+#include "lib/assert.h"
 #include "lib/registry.h"
 #include "lib/threadpool.h"
 #include "protocol.h"
@@ -137,11 +138,11 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 	{                                                                      \
 		size_t _n = response_##LOWER##__sizeof(&RESP);                 \
 		char *_cursor;                                                 \
-		assert(_n % 8 == 0);                                           \
+		dqlite_assert(_n % 8 == 0);                                           \
 		_cursor = buffer__advance(req->buffer, _n);                    \
 		/* Since responses are small and the buffer it's at least 4096 \
 		 * bytes, this can't fail. */                                  \
-		assert(_cursor != NULL);                                       \
+		dqlite_assert(_cursor != NULL);                                       \
 		response_##LOWER##__encode(&RESP, &_cursor);                   \
 		req->cb(req, 0, DQLITE_RESPONSE_##UPPER, SCHEMA);              \
 	}
@@ -172,12 +173,12 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 		int _rv;                                                       \
 		_rv = sqlite3_file_control(g->leader->conn, NULL,              \
 					   SQLITE_FCNTL_FILE_POINTER, &_file); \
-		assert(_rv == SQLITE_OK); /* Should never fail */              \
+		dqlite_assert(_rv == SQLITE_OK); /* Should never fail */              \
 		_rv = _file->pMethods->xShmLock(                               \
 		    _file, 1 /* checkpoint lock */, 1,                         \
 		    SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);                   \
 		if (_rv != 0) {                                                \
-			assert(_rv == SQLITE_BUSY);                            \
+			dqlite_assert(_rv == SQLITE_BUSY);                            \
 			failure(req, SQLITE_BUSY, "checkpoint in progress");   \
 			return 0;                                              \
 		}                                                              \
@@ -195,11 +196,11 @@ static void failure(struct handle *req, int code, const char *message)
 		.message = message,
 	};
 	size_t n = response_failure__sizeof(&failure);
-	assert(n % 8 == 0);
+	dqlite_assert(n % 8 == 0);
 	cursor = buffer__advance(req->buffer, n);
 	/* The buffer has at least 4096 bytes, and error messages are shorter
 	 * than that. So this can't fail. */
-	assert(cursor != NULL);
+	dqlite_assert(cursor != NULL);
 	response_failure__encode(&failure, &cursor);
 	req->cb(req, code, DQLITE_RESPONSE_FAILURE, 0);
 }
@@ -412,7 +413,7 @@ static void handle_prepare_done_cb(struct exec *exec)
 				DQLITE_PREPARE_STMT_SCHEMA_V1);
 			break;
 		default:
-			assert(0);
+			dqlite_assert(0);
 	}
 }
 
@@ -476,7 +477,7 @@ static int handle_finalize(struct gateway *g, struct handle *req)
  * affected. */
 static void fill_result(struct gateway *g, struct response_result *response)
 {
-	assert(g->leader != NULL);
+	dqlite_assert(g->leader != NULL);
 	response->last_insert_id =
 	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
 	/* FIXME eventually we should consider using sqlite3_changes64 here */
@@ -504,7 +505,7 @@ static int exec_work(struct raft_io_async_work *work)
 
 static void exec_work_done(struct raft_io_async_work *req, int status)
 {
-	assert(status == RAFT_OK);
+	dqlite_assert(status == RAFT_OK);
 	return leader_exec_resume(req->data);
 }
 
@@ -1117,7 +1118,7 @@ static int dumpFile(const char *filename,
 		return DQLITE_OK;
 	}
 
-	assert(len % 8 == 0);
+	dqlite_assert(len % 8 == 0);
 
 	cur = buffer__advance(buffer, (size_t)len);
 	if (cur == NULL) {
@@ -1163,7 +1164,7 @@ static int handle_dump(struct gateway *g, struct handle *req)
 
 	response.n = 2;
 	cur = buffer__advance(req->buffer, response_files__sizeof(&response));
-	assert(cur != NULL);
+	dqlite_assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
 	rv = dumpFile(request.filename, &snapshot, req->buffer);
@@ -1207,7 +1208,7 @@ static int encodeServer(struct gateway *g,
 	uint64_t role;
 	text_t address;
 
-	assert(format == DQLITE_REQUEST_CLUSTER_FORMAT_V0 ||
+	dqlite_assert(format == DQLITE_REQUEST_CLUSTER_FORMAT_V0 ||
 	       format == DQLITE_REQUEST_CLUSTER_FORMAT_V1);
 
 	id = g->raft->configuration.servers[i].id;
@@ -1258,7 +1259,7 @@ static int handle_cluster(struct gateway *g, struct handle *req)
 
 	response.n = g->raft->configuration.n;
 	cur = buffer__advance(req->buffer, response_servers__sizeof(&response));
-	assert(cur != NULL);
+	dqlite_assert(cur != NULL);
 	response_servers__encode(&response, &cur);
 
 	for (i = 0; i < response.n; i++) {
@@ -1385,7 +1386,7 @@ int gateway__handle(struct gateway *g,
 	/* Receiving a request when one is ongoing on the same connection
 	 * is a hard error. The connection will be stopped due to the non-0
 	 * return code in case asserts are off. */
-	assert(false);
+	dqlite_assert(false);
 	return SQLITE_BUSY;
 
 handle:

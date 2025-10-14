@@ -29,8 +29,25 @@ AM_COND_IF(SANITIZE_ENABLED,
    [true],
    [AC_MSG_ERROR([address sanitizer not supported])]))
 
-AC_ARG_ENABLE(backtrace, AS_HELP_STRING([--enable-backtrace[=ARG]], [print backtrace on assertion failure [default=no]]))
-AM_CONDITIONAL(BACKTRACE_ENABLED, test "x$enable_backtrace" = "xyes")
+AC_ARG_ENABLE([backtrace], AS_HELP_STRING([--enable-backtrace[=ARG]], [print backtrace on assertion failure (default=yes)]))
+AM_CONDITIONAL(BACKTRACE_ENABLED, test "x$enable_backtrace" != "xno")
+
+BACKTRACE_CFLAGS=
+BACKTRACE_LIBS=
+AM_COND_IF(BACKTRACE_ENABLED, [
+    AC_CHECK_HEADERS([backtrace.h], [
+      BACKTRACE_LIBS=-lbacktrace
+    ], [ AC_CHECK_HEADERS([execinfo.h], [
+      BACKTRACE_LIBS=-rdynamic
+    ], [ PKG_CHECK_MODULES(LIBUNWIND, [libunwind-generic >= 1.7], [
+      BACKTRACE_CFLAGS="$LIBUNWIND_CFLAGS -DHAVE_LIBUNWIND_H"
+      BACKTRACE_LIBS=$LIBUNWIND_LIBS
+    ], [
+      AC_MSG_ERROR([backtrace support was requested, but <backtrace.h> nor <execinfo.h> was not found. Use --disable-backtrace to build without it.])
+    ])]) ])
+], [])
+AC_SUBST([BACKTRACE_CFLAGS])
+AC_SUBST([BACKTRACE_LIBS])
 
 AC_ARG_ENABLE(build-sqlite, AS_HELP_STRING([--enable-build-sqlite[=ARG]], [build libsqlite3 from sqlite3.c in the build root [default=no]]))
 AM_CONDITIONAL(BUILD_SQLITE_ENABLED, test "x$enable_build_sqlite" = "xyes")

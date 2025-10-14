@@ -1,7 +1,7 @@
 #include "recv_request_vote.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "election.h"
 #include "recv.h"
 #include "replication.h"
@@ -24,9 +24,9 @@ int recvRequestVote(struct raft *r,
 	int match;
 	int rv;
 
-	assert(r != NULL);
-	assert(id > 0);
-	assert(args != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(id > 0);
+	dqlite_assert(args != NULL);
 
 	tracef(
 	    "self:%llu from:%llu@%s candidate_id:%llu disrupt_leader:%d "
@@ -106,7 +106,7 @@ int recvRequestVote(struct raft *r,
 	if (!args->pre_vote) {
 		tracef("no pre_vote: current_term:%llu term:%llu",
 		       r->current_term, args->term);
-		assert(r->current_term == args->term);
+		dqlite_assert(r->current_term == args->term);
 	}
 
 	rv = electionVote(r, args, &result->vote_granted);

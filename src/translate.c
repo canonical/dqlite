@@ -1,9 +1,9 @@
-#include "translate.h"
 
-#include "assert.h"
 #include "leader.h"
+#include "lib/assert.h"
 #include "protocol.h"
 #include "raft.h"
+#include "translate.h"
 
 /* Translate a raft error to a dqlite one. */
 int translateRaftErrCode(int code)
@@ -48,7 +48,7 @@ int translateRaftRole(int role)
 		case RAFT_SPARE:
 			return DQLITE_SPARE;
 		default:
-			assert(0);
+			dqlite_assert(0);
 			return -1;
 	}
 }

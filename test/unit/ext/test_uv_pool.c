@@ -43,7 +43,7 @@ static void bottom_after_work_cb(pool_work_t *w)
 		pool_close(w->pool);
 
 	count++;
-	assert(w->type != WT_BAR);
+	munit_assert(w->type != WT_BAR);
 	free(w);
 }
 

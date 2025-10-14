@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 #include "../../../src/raft/byte.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /******************************************************************************
  *

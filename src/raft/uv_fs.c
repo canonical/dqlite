@@ -10,7 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "err.h"
 #include "heap.h"
 #include "uv_fs.h"
@@ -385,7 +385,7 @@ err_after_open:
 err_unlink:
 	UvOsUnlink(path);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -563,7 +563,7 @@ int UvFsMakeCompressedFile(const char *dir,
 	/* Limit the size of each chunk to 4MB to make sure this logic doesn't
 	 * need too much memory. */
 	const size_t lz4_max_block_size = 4 * 1024 * 1024;
-	assert(chunk_size <= lz4_max_block_size);
+	dqlite_assert(chunk_size <= lz4_max_block_size);
 
 	LZ4F_preferences_t
 	    lz4_pref = { .frameInfo = {
@@ -771,7 +771,7 @@ int UvFsReadInto(uv_file fd, struct raft_buffer *buf, char *errmsg)
 		if (rv == 0) {
 			break;
 		}
-		assert(rv > 0);
+		dqlite_assert(rv > 0);
 		offset += (size_t)rv;
 	}
 	if (offset < buf->len) {
@@ -810,7 +810,7 @@ int UvFsReadFile(const char *dir,
 	}
 
 	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	buf->len = (size_t)sb.st_size;
 	buf->base = RaftHeapMalloc(buf->len);
@@ -863,7 +863,7 @@ int UvFsReadCompressedFile(const char *dir,
 	}
 
 	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	LZ4F_decompressionContext_t ctx;
 	size_t lzrv = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
@@ -1160,10 +1160,10 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 			/* Since we fallocate'ed the file, we should never fail
 			 * because of lack of disk space, and all bytes should
 			 * have been written. */
-			assert(rv == (int)(*size));
+			dqlite_assert(rv == (int)(*size));
 			return 0;
 		}
-		assert(rv == -1);
+		dqlite_assert(rv == -1);
 		if (errno != EIO && errno != EOPNOTSUPP) {
 			/* UNTESTED: this should basically fail only because of
 			 * disk errors, since we allocated the file with
@@ -1241,7 +1241,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	/* Fetch the response: will block until done. */
 	struct io_event event = {}; /* KAIO response object */
 	n_events = UvOsIoGetevents(ctx, 1, 1, &event, NULL);
-	assert(n_events == 1);
+	dqlite_assert(n_events == 1);
 	if (n_events != 1) {
 		/* UNTESTED */
 		UvOsErrMsg(errmsg, "UvOsIoGetevents", n_events);
@@ -1259,7 +1259,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	}
 
 	if (event.res > 0) {
-		assert(event.res == (int)size);
+		dqlite_assert(event.res == (int)size);
 		*ok = true;
 	} else {
 		/* UNTESTED: this should basically fail only because of disk

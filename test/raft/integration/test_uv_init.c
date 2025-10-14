@@ -1,7 +1,7 @@
 #include "../../../src/raft.h"
 #include "../../../src/raft/byte.h"
 #include "../../../src/raft/uv_encoding.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 #include "../lib/uv.h"
 
 #include <linux/magic.h>

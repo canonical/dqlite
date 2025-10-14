@@ -1,13 +1,12 @@
-#include <assert.h>
+#include <sqlite3.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <sqlite3.h>
-
 #include "../include/dqlite.h"
 
 #include "config.h"
+#include "lib/assert.h"
 #include "logger.h"
 
 /* Default heartbeat timeout in milliseconds.
@@ -58,7 +57,7 @@ int config__init(struct config *c,
 	
 	unsigned vfs_id = atomic_fetch_add_explicit(&serial, 1, memory_order_relaxed);
 	int rv = snprintf(c->vfs.name, sizeof c->vfs.name, "dqlite-%u", vfs_id);
-	assert(rv > 0 && rv < (int)(sizeof c->vfs.name));
+	dqlite_assert(rv > 0 && rv < (int)(sizeof c->vfs.name));
 
 	snprintf(c->raft_dir, sizeof(c->raft_dir), "%s", (raft_dir != NULL) ? raft_dir : "");
 

@@ -1,5 +1,5 @@
 #include "../lib/cluster.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 #define N_SERVERS 3
 

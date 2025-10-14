@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "byte.h"
 #include "heap.h"
 #include "uv_ip.h"
@@ -96,7 +96,7 @@ static void uvTcpIncomingAllocCbAddress(struct uv_handle_s *handle,
 {
 	struct uvTcpIncoming *incoming = handle->data;
 	(void)suggested_size;
-	assert(!incoming->t->closing);
+	dqlite_assert(!incoming->t->closing);
 	buf->base =
 	    incoming->handshake.address.base + incoming->handshake.nread;
 	buf->len = incoming->handshake.address.len - incoming->handshake.nread;
@@ -113,7 +113,7 @@ static void uvTcpIncomingReadCbAddress(uv_stream_t *stream,
 	int rv;
 
 	(void)buf;
-	assert(!incoming->t->closing);
+	dqlite_assert(!incoming->t->closing);
 
 	if (nread == 0) {
 		/* Empty read just ignore it. */
@@ -126,7 +126,7 @@ static void uvTcpIncomingReadCbAddress(uv_stream_t *stream,
 
 	/* We shouldn't have read more data than the pending amount. */
 	n = (size_t)nread;
-	assert(n <=
+	dqlite_assert(n <=
 	       incoming->handshake.address.len - incoming->handshake.nread);
 
 	/* Advance the read window */
@@ -140,7 +140,7 @@ static void uvTcpIncomingReadCbAddress(uv_stream_t *stream,
 
 	/* If we have completed reading the address, let's fire the callback. */
 	rv = uv_read_stop(stream);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	id = byteFlip64(incoming->handshake.preamble[1]);
 	address = incoming->handshake.address.base;
 	queue_remove(&incoming->queue);
@@ -184,7 +184,7 @@ static void uvTcpIncomingReadCbPreamble(uv_stream_t *stream,
 
 	/* We shouldn't have read more data than the pending amount. */
 	n = (size_t)nread;
-	assert(n <=
+	dqlite_assert(n <=
 	       sizeof incoming->handshake.preamble - incoming->handshake.nread);
 
 	/* Advance the read window */
@@ -204,11 +204,11 @@ static void uvTcpIncomingReadCbPreamble(uv_stream_t *stream,
 	}
 
 	rv = uv_read_stop(stream);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	rv = uv_read_start((uv_stream_t *)incoming->tcp,
 			   uvTcpIncomingAllocCbAddress,
 			   uvTcpIncomingReadCbAddress);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 }
 
 /* Start reading handshake data for a new incoming connection. */
@@ -225,7 +225,7 @@ static int uvTcpIncomingStart(struct uvTcpIncoming *incoming)
 	incoming->tcp->data = incoming;
 
 	rv = uv_tcp_init(incoming->t->loop, incoming->tcp);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	rv = uv_accept((struct uv_stream_s *)incoming->listener,
 		       (struct uv_stream_s *)incoming->tcp);
@@ -236,7 +236,7 @@ static int uvTcpIncomingStart(struct uvTcpIncoming *incoming)
 	rv = uv_read_start((uv_stream_t *)incoming->tcp,
 			   uvTcpIncomingAllocCbPreamble,
 			   uvTcpIncomingReadCbPreamble);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	return 0;
 
@@ -258,7 +258,7 @@ static void uvTcpListenCb(struct uv_stream_s *stream, int status)
 	struct uvTcpIncoming *incoming;
 	int rv;
 
-	assert(IS_IN_ARRAY(stream, t->listeners, t->n_listeners));
+	dqlite_assert(IS_IN_ARRAY(stream, t->listeners, t->n_listeners));
 
 	if (status != 0) {
 		rv = RAFT_IOERR;
@@ -287,7 +287,7 @@ err_after_accept_alloc:
 	queue_remove(&incoming->queue);
 	RaftHeapFree(incoming);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 }
 
 /* Do bind/listen call on the tcp handle */
@@ -396,9 +396,9 @@ int UvTcpListen(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
 static void uvTcpListenCloseCbListener(struct uv_handle_s *handle)
 {
 	struct UvTcp *t = handle->data;
-	assert(t->closing);
-	assert(t->n_listeners);
-	assert(t->listeners);
+	dqlite_assert(t->closing);
+	dqlite_assert(t->n_listeners);
+	dqlite_assert(t->listeners);
 	if (--t->n_listeners == 0) {
 		raft_free(t->listeners);
 		t->listeners = NULL;
@@ -409,7 +409,7 @@ static void uvTcpListenCloseCbListener(struct uv_handle_s *handle)
 void UvTcpListenClose(struct UvTcp *t)
 {
 	queue *head;
-	assert(t->closing);
+	dqlite_assert(t->closing);
 
 	while (!queue_empty(&t->accepting)) {
 		struct uvTcpIncoming *incoming;

@@ -1,8 +1,8 @@
-#include <assert.h>
 #include <string.h>
 
 #include "../include/dqlite.h"
 
+#include "lib/assert.h"
 #include "registry.h"
 #include "vfs.h"
 
@@ -30,7 +30,7 @@ void registry__init(struct registry *r, struct config *config)
 	};
 	queue_init(&r->dbs);
 	sqlite3_vfs *vfs = sqlite3_vfs_find(config->vfs.name);
-	assert(vfs != NULL);
+	dqlite_assert(vfs != NULL);
 	VfsDeleteHook(vfs, registryDeleteHook, r);
 }
 
@@ -47,7 +47,7 @@ void registry__close(struct registry *r)
 	}
 	r->size = 0;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(r->config->vfs.name);
-	assert(vfs != NULL);
+	dqlite_assert(vfs != NULL);
 	VfsDeleteHook(vfs, NULL, NULL);
 }
 

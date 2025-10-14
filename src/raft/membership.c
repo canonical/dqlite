@@ -1,8 +1,8 @@
 #include "membership.h"
 
+#include "../lib/assert.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "err.h"
 #include "heap.h"
@@ -35,21 +35,21 @@ int membershipCanChangeConfiguration(struct raft *r)
 
 	/* In order to become leader at all we are supposed to have committed at
 	 * least the initial configuration at index 1. */
-	assert(r->configuration_committed_index > 0);
+	dqlite_assert(r->configuration_committed_index > 0);
 
 	/* The index of the last committed configuration can't be greater than
 	 * the last log index. */
-	assert(logLastIndex(r->log) >= r->configuration_committed_index);
+	dqlite_assert(logLastIndex(r->log) >= r->configuration_committed_index);
 
 	/* No catch-up round should be in progress. */
-	assert(r->leader_state.round_number == 0);
-	assert(r->leader_state.round_index == 0);
-	assert(r->leader_state.round_start == 0);
+	dqlite_assert(r->leader_state.round_number == 0);
+	dqlite_assert(r->leader_state.round_index == 0);
+	dqlite_assert(r->leader_state.round_start == 0);
 
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	ErrMsgFromCode(r->errmsg, rv);
 	return rv;
 }
@@ -70,7 +70,7 @@ int membershipFetchLastCommittedConfiguration(struct raft *r,
 	if (entry != NULL) {
 		rv = configurationDecode(&entry->buf, conf);
 	} else {
-		assert(r->configuration_last_snapshot.n > 0);
+		dqlite_assert(r->configuration_last_snapshot.n > 0);
 		rv = configurationCopy(&r->configuration_last_snapshot, conf);
 	}
 	if (rv != 0) {
@@ -90,12 +90,12 @@ bool membershipUpdateCatchUpRound(struct raft *r)
 	bool is_up_to_date;
 	bool is_fast_enough;
 
-	assert(r->state == RAFT_LEADER);
-	assert(r->leader_state.promotee_id != 0);
+	dqlite_assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->leader_state.promotee_id != 0);
 
 	server_index = configurationIndexOf(&r->configuration,
 					    r->leader_state.promotee_id);
-	assert(server_index < r->configuration.n);
+	dqlite_assert(server_index < r->configuration.n);
 
 	match_index = progressMatchIndex(r, server_index);
 
@@ -146,10 +146,10 @@ int membershipUncommittedChange(struct raft *r,
 	int rv;
 	char msg[128];
 
-	assert(r != NULL);
-	assert(r->state == RAFT_FOLLOWER);
-	assert(entry != NULL);
-	assert(entry->type == RAFT_CHANGE);
+	dqlite_assert(r != NULL);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(entry != NULL);
+	dqlite_assert(entry->type == RAFT_CHANGE);
 
 	rv = configurationDecode(&entry->buf, &configuration);
 	if (rv != 0) {
@@ -170,7 +170,7 @@ int membershipUncommittedChange(struct raft *r,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -178,13 +178,13 @@ int membershipRollback(struct raft *r)
 {
 	int rv;
 
-	assert(r != NULL);
-	assert(r->state == RAFT_FOLLOWER);
-	assert(r->configuration_uncommitted_index > 0);
+	dqlite_assert(r != NULL);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->configuration_uncommitted_index > 0);
 	tracef("roll back membership");
 
 	/* Fetch the last committed configuration entry. */
-	assert(r->configuration_committed_index != 0);
+	dqlite_assert(r->configuration_committed_index != 0);
 
 	/* Replace the current configuration with the last committed one. */
 	configurationClose(&r->configuration);
@@ -222,9 +222,9 @@ int membershipLeadershipTransferStart(struct raft *r)
 	struct raft_message message;
 	struct raft_io_send *send;
 	int rv;
-	assert(r->transfer->send.data == NULL);
+	dqlite_assert(r->transfer->send.data == NULL);
 	server = configurationGet(&r->configuration, r->transfer->id);
-	assert(server != NULL);
+	dqlite_assert(server != NULL);
 	if (server == NULL) {
 		tracef("transferee server not found in configuration");
 		return -1;

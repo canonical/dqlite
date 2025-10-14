@@ -3,6 +3,7 @@
 DIR="${DIR:=$(realpath `dirname "${0}"`)}"
 
 REPO_MUSL="https://git.launchpad.net/musl"
+REPO_LIBUNWIND="https://github.com/libunwind/libunwind.git"
 REPO_LIBTIRPC="https://salsa.debian.org/debian/libtirpc.git"
 REPO_LIBNSL="https://github.com/thkukuk/libnsl.git"
 REPO_LIBUV="https://github.com/libuv/libuv.git"
@@ -42,7 +43,7 @@ clone-latest-tag() {
 }
 
 # build musl
-if [ ! -f "${INSTALL_DIR}/musl/bin/musl-gcc" ]; then
+if [ ! -f "${INSTALL_DIR}/musl/bin/musl-clang" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf musl
@@ -67,8 +68,21 @@ export CFLAGS="${CFLAGS} -isystem ${INSTALL_DIR}/musl/include"
 export CC=musl-clang
 export LDFLAGS=-static
 
+# build libunwind
+if [ ! -f "${INSTALL_DIR}/lib/libunwind.la" ]; then
+  (
+    cd "${BUILD_DIR}"
+    rm -rf libunwind
+    clone-latest-tag libunwind "${REPO_LIBUNWIND}" v
+    cd libunwind
+    autoreconf -i
+    ./configure --disable-shared --prefix="${INSTALL_DIR}"
+    make -j install
+  )
+fi
+
 # build libtirpc
-if [ ! -f "${BUILD_DIR}/libtirpc/src/libtirpc.la" ]; then
+if [ ! -f "${INSTALL_DIR}/lib/libtirpc.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf libtirpc
@@ -82,7 +96,7 @@ if [ ! -f "${BUILD_DIR}/libtirpc/src/libtirpc.la" ]; then
 fi
 
 # build libnsl
-if [ ! -f "${BUILD_DIR}/libnsl/src/libnsl.la" ]; then
+if [ ! -f "${INSTALL_DIR}/lib/libnsl.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf libnsl
@@ -97,7 +111,7 @@ if [ ! -f "${BUILD_DIR}/libnsl/src/libnsl.la" ]; then
 fi
 
 # build libuv
-if [ ! -f "${BUILD_DIR}/libuv/libuv.la" ]; then
+if [ ! -f "${INSTALL_DIR}/lib/libuv.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf libuv
@@ -110,7 +124,7 @@ if [ ! -f "${BUILD_DIR}/libuv/libuv.la" ]; then
 fi
 
 # build liblz4
-if [ ! -f "${BUILD_DIR}/lz4/lib/liblz4.a" ] || [ ! -f "${BUILD_DIR}/lz4/lib/liblz4.so" ]; then
+if [ ! -f "${INSTALL_DIR}/lib/liblz4.a" ] && [ ! -f "${INSTALL_DIR}/lib/liblz4.so" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf lz4
@@ -121,7 +135,7 @@ if [ ! -f "${BUILD_DIR}/lz4/lib/liblz4.a" ] || [ ! -f "${BUILD_DIR}/lz4/lib/libl
 fi
 
 # build sqlite3
-if [ ! -f "${BUILD_DIR}/sqlite/libsqlite3.la" ]; then
+if [ ! -f "${INSTALL_DIR}/lib/libsqlite3.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf sqlite
@@ -134,12 +148,16 @@ if [ ! -f "${BUILD_DIR}/sqlite/libsqlite3.la" ]; then
 fi
 
 # build dqlite
-if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
+if [ ! -f "${INSTALL_DIR}/lib/libdqlite.la" ]; then
   (
     cd "${DQLITE_PATH}"
     autoreconf -i
-    ./configure --enable-build-raft --with-static-deps --prefix="${INSTALL_DIR}"
-    make -j check-norun
+    cd "${BUILD_DIR}"
+    rm -rf dqlite
+    mkdir dqlite
+    cd dqlite
+    "${DQLITE_PATH}"/configure --with-static-deps --prefix="${INSTALL_DIR}"
+    make -j all check-norun
     make check
   )
 fi

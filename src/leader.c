@@ -7,6 +7,7 @@
 #include "command.h"
 #include "db.h"
 #include "leader.h"
+#include "lib/assert.h"
 #include "lib/queue.h"
 #include "lib/sm.h"
 #include "raft.h"
@@ -92,7 +93,7 @@ static struct exec *leader_finalize(struct leader *leader)
 
 	sqlite3_progress_handler(leader->conn, 1, progress_abort, NULL);
 	int rc = sqlite3_close_v2(leader->conn);
-	assert(rc == 0);
+	dqlite_assert(rc == 0);
 
 	leader->close_cb(leader);
 
@@ -562,7 +563,7 @@ static void exec_tick(struct exec *req)
 		case EXEC_WAITING_APPLY:
 			if (req->status != RAFT_OK) {
 				int rv = VfsAbort(leader->conn);
-				assert(rv == SQLITE_OK);
+				dqlite_assert(rv == SQLITE_OK);
 			}
 			sm_move(&req->sm, EXEC_DONE);
 			continue;

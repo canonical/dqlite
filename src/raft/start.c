@@ -1,6 +1,6 @@
+#include "../lib/assert.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
@@ -32,10 +32,10 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
 	 * Otherwise we we can't know if it's committed or not and treat it as
 	 * uncommitted. */
 	if (index == 1) {
-		assert(r->configuration_uncommitted_index == 0);
+		dqlite_assert(r->configuration_uncommitted_index == 0);
 		r->configuration_committed_index = 1;
 	} else {
-		assert(r->configuration_committed_index < index);
+		dqlite_assert(r->configuration_committed_index < index);
 		r->configuration_uncommitted_index = index;
 	}
 
@@ -130,7 +130,7 @@ static int maybeSelfElect(struct raft *r)
 	if (rv != 0) {
 		return rv;
 	}
-	assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_LEADER);
 	return 0;
 }
 
@@ -144,14 +144,14 @@ int raft_start(struct raft *r)
 	size_t n_entries;
 	int rv;
 
-	assert(r != NULL);
-	assert(r->state == RAFT_UNAVAILABLE);
-	assert(r->heartbeat_timeout != 0);
-	assert(r->heartbeat_timeout < r->election_timeout);
-	assert(r->install_snapshot_timeout != 0);
-	assert(logNumEntries(r->log) == 0);
-	assert(logSnapshotIndex(r->log) == 0);
-	assert(r->last_stored == 0);
+	dqlite_assert(r != NULL);
+	dqlite_assert(r->state == RAFT_UNAVAILABLE);
+	dqlite_assert(r->heartbeat_timeout != 0);
+	dqlite_assert(r->heartbeat_timeout < r->election_timeout);
+	dqlite_assert(r->install_snapshot_timeout != 0);
+	dqlite_assert(logNumEntries(r->log) == 0);
+	dqlite_assert(logSnapshotIndex(r->log) == 0);
+	dqlite_assert(r->last_stored == 0);
 
 #ifndef RAFT_REVISION
 #define RAFT_REVISION "unknown"
@@ -164,7 +164,7 @@ int raft_start(struct raft *r)
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		return rv;
 	}
-	assert(start_index >= 1);
+	dqlite_assert(start_index >= 1);
 	tracef(
 	    "current_term:%llu voted_for:%llu start_index:%llu n_entries:%zu",
 	    r->current_term, r->voted_for, start_index, n_entries);
@@ -186,8 +186,8 @@ int raft_start(struct raft *r)
 	} else if (n_entries > 0) {
 		/* If we don't have a snapshot and the on-disk log is not empty,
 		 * then the first entry must be a configuration entry. */
-		assert(start_index == 1);
-		assert(entries[0].type == RAFT_CHANGE);
+		dqlite_assert(start_index == 1);
+		dqlite_assert(entries[0].type == RAFT_CHANGE);
 
 		/* As a small optimization, bump the commit index to 1 since we
 		 * require the first entry to be the same on all servers. */

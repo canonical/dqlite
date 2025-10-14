@@ -190,11 +190,11 @@ void dqlite__close(struct dqlite_node *d)
 	}
 	raft_free(d->listener);
 	rv = sem_destroy(&d->stopped);
-	assert(rv == 0); /* Fails only if sem object is not valid */
+	dqlite_assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
-	assert(rv == 0); /* Fails only if sem object is not valid */
+	dqlite_assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->handover_done);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	fsm__close(&d->raft_fsm);
 	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
 	// the TODO above referencing the cleanup logic without running the
@@ -449,7 +449,7 @@ static int maybeBootstrap(dqlite_node *d,
 	raft_configuration_init(&configuration);
 	rv = raft_configuration_add(&configuration, id, address, RAFT_VOTER);
 	if (rv != 0) {
-		assert(rv == RAFT_NOMEM);
+		dqlite_assert(rv == RAFT_NOMEM);
 		rv = DQLITE_NOMEM;
 		goto out;
 	};
@@ -509,7 +509,7 @@ static void handoverCb(uv_async_t *handover)
 
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 		RolesCancelPendingChanges(d);
 	}
 
@@ -530,7 +530,7 @@ static void stopCb(uv_async_t *stop)
 	}
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 		RolesCancelPendingChanges(d);
 	}
 	d->running = false;
@@ -553,7 +553,7 @@ static void startup_cb(uv_timer_t *startup)
 	int rv;
 	d->running = true;
 	rv = sem_post(&d->ready);
-	assert(rv == 0); /* No reason for which posting should fail */
+	dqlite_assert(rv == 0); /* No reason for which posting should fail */
 }
 
 static void listenCb(uv_stream_t *listener, int status)
@@ -580,7 +580,7 @@ static void listenCb(uv_stream_t *listener, int status)
 				return;
 			}
 			rv = uv_tcp_init(&t->loop, (struct uv_tcp_s *)stream);
-			assert(rv == 0);
+			dqlite_assert(rv == 0);
 			break;
 		case UV_NAMED_PIPE:
 			stream = raft_malloc(sizeof(struct uv_pipe_s));
@@ -589,10 +589,10 @@ static void listenCb(uv_stream_t *listener, int status)
 			}
 			rv = uv_pipe_init(&t->loop, (struct uv_pipe_s *)stream,
 					  0);
-			assert(rv == 0);
+			dqlite_assert(rv == 0);
 			break;
 		default:
-			assert(0);
+			dqlite_assert(0);
 	}
 
 	rv = uv_accept(listener, stream);
@@ -663,7 +663,7 @@ static int taskRun(struct dqlite_node *d)
 
 	/* TODO: implement proper cleanup upon error by spinning the loop a few
 	 * times. */
-	assert(d->listener != NULL);
+	dqlite_assert(d->listener != NULL);
 
 	rv = uv_listen(d->listener, 128, listenCb);
 	if (rv != 0) {
@@ -673,29 +673,29 @@ static int taskRun(struct dqlite_node *d)
 
 	d->handover.data = d;
 	rv = uv_async_init(&d->loop, &d->handover, handoverCb);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	/* Initialize notification handles. */
 	d->stop.data = d;
 	rv = uv_async_init(&d->loop, &d->stop, stopCb);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	/* Schedule startup_cb to be fired as soon as the loop starts. It will
 	 * unblock clients of taskReady. */
 	d->startup.data = d;
 	rv = uv_timer_init(&d->loop, &d->startup);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	/* Schedule the role management callback. */
 	d->timer.data = d;
 	rv = uv_timer_init(&d->loop, &d->timer);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	if (d->role_management) {
 		/* TODO make the interval configurable */
 		rv = uv_timer_start(&d->timer, roleManagementTimerCb, 1000,
 				    1000);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 	}
 
 	d->raft.data = d;
@@ -709,11 +709,11 @@ static int taskRun(struct dqlite_node *d)
 	}
 
 	rv = uv_run(&d->loop, UV_RUN_DEFAULT);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	/* Unblock any client of taskReady */
 	rv = sem_post(&d->ready);
-	assert(rv == 0); /* no reason for which posting should fail */
+	dqlite_assert(rv == 0); /* no reason for which posting should fail */
 
 	return 0;
 }
@@ -873,7 +873,7 @@ int dqlite_node_handover(dqlite_node *d)
 	int rv;
 
 	rv = uv_async_send(&d->handover);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	sem_wait(&d->handover_done);
 
@@ -892,10 +892,10 @@ int dqlite_node_stop(dqlite_node *d)
 	}
 
 	rv = uv_async_send(&d->stop);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	rv = pthread_join(d->thread, &result);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	release_dir(d->lock_fd);
 	d->lock_fd = -EBADF;
@@ -985,7 +985,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 					    raft_role);
 		if (rv != 0) {
 			tracef("unable to add server to raft configuration, error: %d", rv);
-			assert(rv == RAFT_NOMEM);
+			dqlite_assert(rv == RAFT_NOMEM);
 			rv = DQLITE_NOMEM;
 			goto out;
 		};
@@ -1039,7 +1039,7 @@ dqlite_node_id dqlite_generate_node_id(const char *address)
 	unsigned long long n;
 
 	rv = clock_gettime(CLOCK_REALTIME, &ts);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	n = (unsigned long long)(ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec);
 
@@ -1332,9 +1332,9 @@ int dqlite_server_create(const char *path, dqlite_server **server)
 
 	*server = callocChecked(1, sizeof **server);
 	rv = pthread_cond_init(&(*server)->cond, NULL);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	rv = pthread_mutex_init(&(*server)->mutex, NULL);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	(*server)->dir_path = strdupChecked(path);
 	(*server)->connect = transportDefaultConnect;
 	(*server)->proto.connect = transportDefaultConnect;
@@ -1494,7 +1494,7 @@ static int refreshNodeStoreCache(struct dqlite_server *server,
 	emptyCache(&server->cache);
 	server->cache.nodes = servers;
 	server->cache.len = (unsigned)n_servers;
-	assert((uint64_t)server->cache.len == n_servers);
+	dqlite_assert((uint64_t)server->cache.len == n_servers);
 	server->cache.cap = (unsigned)n_servers;
 	return 0;
 }
@@ -1578,10 +1578,10 @@ static void *refreshTask(void *arg)
 	int rv;
 
 	rv = pthread_mutex_lock(&server->mutex);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	for (;;) {
 		rv = clock_gettime(CLOCK_REALTIME, &ts);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 		nsec = (unsigned long long)ts.tv_nsec;
 		nsec += server->refresh_period * 1000 * 1000;
 		while (nsec > 1000 * 1000 * 1000) {
@@ -1598,10 +1598,10 @@ static void *refreshTask(void *arg)
 		rv = pthread_cond_timedwait(&server->cond, &server->mutex, &ts);
 		if (server->shutdown) {
 			rv = pthread_mutex_unlock(&server->mutex);
-			assert(rv == 0);
+			dqlite_assert(rv == 0);
 			break;
 		}
-		assert(rv == 0 || rv == ETIMEDOUT);
+		dqlite_assert(rv == 0 || rv == ETIMEDOUT);
 
 		clientContextMillis(&context, 5000);
 		if (server->proto.fd == -1) {
@@ -1662,7 +1662,7 @@ int dqlite_server_start(dqlite_server *server)
 	}
 
 	full_size = lseek(info_fd, 0, SEEK_END);
-	assert(full_size >= 0);
+	dqlite_assert(full_size >= 0);
 	if (full_size > (off_t)SSIZE_MAX) {
 		goto err_after_open_store;
 	}
@@ -1687,7 +1687,7 @@ int dqlite_server_start(dqlite_server *server)
 	}
 
 	full_size = lseek(store_fd, 0, SEEK_END);
-	assert(full_size >= 0);
+	dqlite_assert(full_size >= 0);
 	if (full_size > (off_t)SSIZE_MAX) {
 		goto err_after_open_store;
 	}
@@ -1755,7 +1755,7 @@ int dqlite_server_start(dqlite_server *server)
 	}
 
 	rv = pthread_create(&server->refresh_thread, NULL, refreshTask, server);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	close(store_fd);
 	close(info_fd);
@@ -1802,14 +1802,14 @@ int dqlite_server_stop(dqlite_server *server)
 	}
 
 	rv = pthread_mutex_lock(&server->mutex);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	server->shutdown = true;
 	rv = pthread_mutex_unlock(&server->mutex);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	rv = pthread_cond_signal(&server->cond);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	rv = pthread_join(server->refresh_thread, &ret);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	emptyCache(&server->cache);
 

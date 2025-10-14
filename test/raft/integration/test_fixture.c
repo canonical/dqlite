@@ -1,7 +1,7 @@
 #include "../../../src/raft.h"
 #include "../lib/fsm.h"
 #include "../lib/heap.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 #define N_SERVERS 3
 

@@ -1,3 +1,4 @@
+#include "lib/assert.h"
 #include "query.h"
 #include "tuple.h"
 
@@ -15,17 +16,17 @@ static int value_type(sqlite3_stmt *stmt, int i)
 			if (type == SQLITE_INTEGER) {
 				type = DQLITE_UNIXTIME;
 			} else {
-				assert(type == SQLITE_TEXT ||
+				dqlite_assert(type == SQLITE_TEXT ||
 				       type == SQLITE_NULL);
 				type = DQLITE_ISO8601;
 			}
 		} else if (strcasecmp(column_type_name, "BOOLEAN") == 0) {
-			assert(type == SQLITE_INTEGER || type == SQLITE_NULL);
+			dqlite_assert(type == SQLITE_INTEGER || type == SQLITE_NULL);
 			type = DQLITE_BOOLEAN;
 		}
 	}
 
-	assert(type < 16);
+	dqlite_assert(type < 16);
 	return type;
 }
 
@@ -107,7 +108,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 
 	/* Insert the column count */
 	cursor = buffer__advance(buffer, sizeof(uint64_t));
-	assert(cursor != NULL);
+	dqlite_assert(cursor != NULL);
 	uint64_t column_count64 = (uint64_t)column_count;
 	uint64__encode(&column_count64, &cursor);
 

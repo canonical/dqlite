@@ -1,6 +1,6 @@
-#include "assert.h"
-#include "heap.h"
+#include "../lib/assert.h"
 #include "../lib/queue.h"
+#include "heap.h"
 #include "uv.h"
 #include "uv_os.h"
 
@@ -65,7 +65,7 @@ sync:
 
 err:
 	tracef("truncate segment %s: %s", filename1, errmsg);
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	segment->status = rv;
 }
 
@@ -79,7 +79,7 @@ static void uvFinalizeAfterWorkCb(uv_work_t *work, int status)
 	queue *head;
 	int rv;
 
-	assert(status == 0); /* We don't cancel worker requests */
+	dqlite_assert(status == 0); /* We don't cancel worker requests */
 	uv->finalize_work.data = NULL;
 	if (segment->status != 0) {
 		uv->errored = true;
@@ -115,8 +115,8 @@ static int uvFinalizeStart(struct uvDyingSegment *segment)
 	struct uv *uv = segment->uv;
 	int rv;
 
-	assert(uv->finalize_work.data == NULL);
-	assert(segment->counter > 0);
+	dqlite_assert(uv->finalize_work.data == NULL);
+	dqlite_assert(segment->counter > 0);
 
 	uv->finalize_work.data = segment;
 
@@ -142,8 +142,8 @@ int UvFinalize(struct uv *uv,
 	int rv;
 
 	if (used > 0) {
-		assert(first_index > 0);
-		assert(last_index >= first_index);
+		dqlite_assert(first_index > 0);
+		dqlite_assert(last_index >= first_index);
 	}
 
 	segment = RaftHeapMalloc(sizeof *segment);

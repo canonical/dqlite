@@ -1,10 +1,11 @@
-#include "tracing.h"
 #include <stdio.h> /* stderr */
 #include <stdlib.h>
 #include <string.h>      /* strstr, strlen */
 #include <sys/syscall.h> /* syscall */
 #include <unistd.h>      /* syscall, getpid */
-#include "assert.h"      /* assert */
+
+#include "tracing.h"
+#include "lib/assert.h"
 #include "lib/byte.h"    /* ARRAY_SIZE */
 
 #define LIBDQLITE_TRACE "LIBDQLITE_TRACE"
@@ -91,7 +92,7 @@ void stderrTracerEmit(const char *file,
 		      unsigned int level,
 		      const char *message)
 {
-	assert(tracer__level < TRACE_NR);
+	dqlite_assert(tracer__level < TRACE_NR);
 
 	if (level >= tracer__level)
 		tracerEmit(file, line, func, level, message);

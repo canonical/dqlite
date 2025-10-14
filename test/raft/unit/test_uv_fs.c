@@ -5,7 +5,7 @@
 #include "../../../src/raft/uv_os.h"
 #include "../lib/aio.h"
 #include "../lib/dir.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /******************************************************************************
  *

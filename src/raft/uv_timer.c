@@ -1,6 +1,6 @@
-#include "./uv.h"
-#include "./heap.h"
-
+#include "../lib/assert.h"
+#include "uv.h"
+#include "heap.h"
 
 static void uvTimerCallback(uv_timer_t* handle) {
     struct raft_timer *req = handle->data;
@@ -14,7 +14,7 @@ static void uvTimerFree(uv_handle_t *handle) {
 int UvTimerStart(struct raft_io *io, struct raft_timer *req, uint64_t timeout, uint64_t repeat, raft_timer_cb cb) {
     int rv;
     struct uv *uv = io->impl;
-    assert(!uv->closing);
+    dqlite_assert(!uv->closing);
 
     uv_timer_t *timer = RaftHeapMalloc(sizeof *timer);
     if (timer == NULL) {

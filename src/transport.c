@@ -1,11 +1,11 @@
-#include "lib/transport.h"
-
 #include <sqlite3.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "lib/addr.h"
+#include "lib/assert.h"
+#include "lib/transport.h"
 #include "message.h"
 #include "protocol.h"
 #include "raft.h"
@@ -142,7 +142,7 @@ static void connect_after_work_cb(uv_work_t *work, int status)
 	struct uv_stream_s *stream = NULL;
 	int rv;
 
-	assert(status == 0);
+	dqlite_assert(status == 0);
 
 	if (r->status != 0) {
 		goto out;
@@ -222,7 +222,7 @@ int transportDefaultConnect(void *arg, const char *address, int *fd)
 		return RAFT_NOCONNECTION;
 	}
 
-	assert(addr->sa_family == AF_INET || addr->sa_family == AF_INET6);
+	dqlite_assert(addr->sa_family == AF_INET || addr->sa_family == AF_INET6);
 	*fd = socket(addr->sa_family, SOCK_STREAM, 0);
 	if (*fd == -1) {
 		return RAFT_NOCONNECTION;
