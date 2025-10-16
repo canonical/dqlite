@@ -540,7 +540,7 @@ static int uvSetVote(struct raft_io *io, const raft_id server_id)
 	uv = io->impl;
 	uv->metadata.version++;
 	uv->metadata.voted_for = server_id;
-	rv = uvMetadataStore(uv, &uv->metadata);
+	rv = uvMetadataStore(uv->dir, &uv->metadata, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}
