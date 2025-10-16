@@ -109,7 +109,7 @@ int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, char *errmsg);
 /* Store the given metadata to disk, writing the appropriate metadata file
  * according to the metadata version (if the version is odd, write metadata1,
  * otherwise write metadata2). */
-int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata);
+int uvMetadataStore(const char *dir, const struct uvMetadata *metadata, char *errmsg);
 
 /* Metadata about a segment file. */
 struct uvSegmentInfo

@@ -173,7 +173,7 @@ static unsigned short uvMetadataFileIndex(unsigned long long version)
 	return version % 2 == 1 ? 1 : 2;
 }
 
-int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata)
+int uvMetadataStore(const char *dir, const struct uvMetadata *metadata, char *errmsg)
 {
 	char filename[METADATA_FILENAME_SIZE];  /* Filename of the metadata file
 						 */
@@ -194,9 +194,9 @@ int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata)
 	/* Write the metadata file, creating it if it does not exist. */
 	buf.base = content;
 	buf.len = sizeof content;
-	rv = UvFsMakeOrOverwriteFile(uv->dir, filename, &buf, uv->io->errmsg);
+	rv = UvFsMakeOrOverwriteFile(dir, filename, &buf, errmsg);
 	if (rv != 0) {
-		ErrMsgWrapf(uv->io->errmsg, "persist %s", filename);
+		ErrMsgWrapf(errmsg, "persist %s", filename);
 		return rv;
 	}
 

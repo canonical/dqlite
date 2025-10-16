@@ -525,7 +525,7 @@ static int uvSetTerm(struct raft_io *io, const raft_term term)
 	uv->metadata.version++;
 	uv->metadata.term = term;
 	uv->metadata.voted_for = 0;
-	rv = uvMetadataStore(uv, &uv->metadata);
+	rv = uvMetadataStore(uv->dir, &uv->metadata, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}
