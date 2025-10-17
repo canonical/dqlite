@@ -24,6 +24,8 @@ void configurationClose(struct raft_configuration *c)
 	if (c->servers != NULL) {
 		raft_free(c->servers);
 	}
+	c->n = 0;
+	c->servers = NULL;
 }
 
 unsigned configurationIndexOf(const struct raft_configuration *c,
