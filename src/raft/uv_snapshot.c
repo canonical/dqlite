@@ -213,8 +213,8 @@ void UvSnapshotSort(struct uvSnapshotInfo *infos, size_t n_infos)
 
 /* Parse the metadata file of a snapshot and populate the metadata portion of
  * the given snapshot object accordingly. */
-static int uvSnapshotLoadMeta(struct uv *uv,
-			      struct uvSnapshotInfo *info,
+int uvSnapshotLoadMeta(const char *dir,
+			      const struct uvSnapshotInfo *info,
 			      struct raft_snapshot *snapshot,
 			      char *errmsg)
 {
@@ -232,7 +232,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	snapshot->term = info->term;
 	snapshot->index = info->index;
 
-	rv = UvFsOpenFileForReading(uv->dir, info->filename, &fd, errmsg);
+	rv = UvFsOpenFileForReading(dir, info->filename, &fd, errmsg);
 	if (rv != 0) {
 		tracef("open %s: %s", info->filename, errmsg);
 		rv = RAFT_IOERR;
@@ -360,7 +360,7 @@ int UvSnapshotLoad(struct uv *uv,
 		   char *errmsg)
 {
 	int rv;
-	rv = uvSnapshotLoadMeta(uv, meta, snapshot, errmsg);
+	rv = uvSnapshotLoadMeta(uv->dir, meta, snapshot, errmsg);
 	if (rv != 0) {
 		return rv;
 	}
