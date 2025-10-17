@@ -281,7 +281,7 @@ int uvLoadEntriesBatch(const struct raft_buffer *content,
 	crc1 = byteFlip32(((uint32_t *)checksums)[0]);
 	crc2 = byteCrc32(header.base, header.len, 0);
 	if (crc1 != crc2) {
-		ErrMsgWrapf(errmsg, "header checksum mismatch");
+		ErrMsgPrintf(errmsg, "header checksum mismatch");
 		rv = RAFT_CORRUPT;
 		goto err;
 	}

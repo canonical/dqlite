@@ -598,6 +598,20 @@ static void uvSnapshotPutBarrierCb(struct UvBarrierReq *barrier)
 	uvSnapshotPutStart(put);
 }
 
+void formatSnapshotMetaHeader(void *header, raft_index index, const struct raft_buffer *content) { 
+	void *cursor = header;
+	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, 0);
+	bytePut64(&cursor, index);
+	bytePut64(&cursor, content->len);
+
+	unsigned crc = byteCrc32(header + 16, 16, 0);
+	crc = byteCrc32(content->base, content->len, crc);
+
+	cursor = header + 8;
+	bytePut64(&cursor, crc);
+}
+
 int UvSnapshotPut(struct raft_io *io,
 		  unsigned trailing,
 		  struct raft_io_snapshot_put *req,
@@ -606,8 +620,6 @@ int UvSnapshotPut(struct raft_io *io,
 {
 	struct uv *uv;
 	struct uvSnapshotPut *put;
-	void *cursor;
-	unsigned crc;
 	int rv;
 	raft_index next_index;
 
@@ -645,17 +657,7 @@ int UvSnapshotPut(struct raft_io *io,
 		goto err_after_req_alloc;
 	}
 
-	cursor = put->meta.header;
-	bytePut64(&cursor, UV__DISK_FORMAT);
-	bytePut64(&cursor, 0);
-	bytePut64(&cursor, snapshot->configuration_index);
-	bytePut64(&cursor, put->meta.bufs[1].len);
-
-	crc = byteCrc32(&put->meta.header[2], sizeof(uint64_t) * 2, 0);
-	crc = byteCrc32(put->meta.bufs[1].base, put->meta.bufs[1].len, crc);
-
-	cursor = &put->meta.header[1];
-	bytePut64(&cursor, crc);
+	formatSnapshotMetaHeader(put->meta.header, snapshot->configuration_index, &put->meta.bufs[1]);
 
 	/* - If the trailing parameter is set to 0, it means that we're
 	 * restoring a snapshot. Submit a barrier request setting the next

@@ -165,7 +165,7 @@ SERIALIZE__DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
 SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
 
 /* Encode the global snapshot header. */
-static int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
+int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
 {
 	struct snapshotHeader header;
 	char *cursor;
