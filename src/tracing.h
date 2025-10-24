@@ -91,7 +91,7 @@ DQLITE_API void dqlite_crash_trace(const struct trace_def *trace_def,
 			const size_t argc,
 			const struct trace_arg *argv);
 
-inline struct trace_arg dqlite_i8_arg(int8_t value)
+static inline struct trace_arg dqlite_i8_arg(int8_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_I8,
@@ -99,7 +99,7 @@ inline struct trace_arg dqlite_i8_arg(int8_t value)
 	};
 }
 
-inline struct trace_arg dqlite_i16_arg(int16_t value)
+static inline struct trace_arg dqlite_i16_arg(int16_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_I16,
@@ -107,7 +107,7 @@ inline struct trace_arg dqlite_i16_arg(int16_t value)
 	};
 }
 
-inline struct trace_arg dqlite_i32_arg(int32_t value)
+static inline struct trace_arg dqlite_i32_arg(int32_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_I32,
@@ -115,14 +115,14 @@ inline struct trace_arg dqlite_i32_arg(int32_t value)
 	};
 }
 
-inline struct trace_arg dqlite_i64_arg(int64_t value)
+static inline struct trace_arg dqlite_i64_arg(int64_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_I64,
 		.value = { .i64 = value },
 	};
 }
-inline struct trace_arg dqlite_u8_arg(uint8_t value)
+static inline struct trace_arg dqlite_u8_arg(uint8_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_U8,
@@ -130,7 +130,7 @@ inline struct trace_arg dqlite_u8_arg(uint8_t value)
 	};
 }
 
-inline struct trace_arg dqlite_u16_arg(uint16_t value)
+static inline struct trace_arg dqlite_u16_arg(uint16_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_U16,
@@ -138,7 +138,7 @@ inline struct trace_arg dqlite_u16_arg(uint16_t value)
 	};
 }
 
-inline struct trace_arg dqlite_u32_arg(uint32_t value)
+static inline struct trace_arg dqlite_u32_arg(uint32_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_U32,
@@ -146,7 +146,7 @@ inline struct trace_arg dqlite_u32_arg(uint32_t value)
 	};
 }
 
-inline struct trace_arg dqlite_u64_arg(uint64_t value)
+static inline struct trace_arg dqlite_u64_arg(uint64_t value)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_U64,
@@ -154,14 +154,14 @@ inline struct trace_arg dqlite_u64_arg(uint64_t value)
 	};
 }
 
-inline struct trace_arg dqlite_string_arg(const char *str)
+static inline struct trace_arg dqlite_string_arg(const char *str)
 {
 	struct trace_arg arg = { .type = TRACE_ARG_STR };
 	strlcpy(arg.value.str, str, sizeof(arg.value.str));
 	return arg;
 }
 
-inline struct trace_arg dqlite_pointer_arg(const void *ptr)
+static inline struct trace_arg dqlite_pointer_arg(const void *ptr)
 {
 	return (struct trace_arg){
 		.type = TRACE_ARG_PTR,
