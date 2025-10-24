@@ -132,7 +132,7 @@ void dqlite_crash_trace(const struct trace_def *trace_def,
 			const size_t argc,
 			const struct trace_arg *argv)
 {
-	assert(argc <= DQLITE_MAX_CRASH_TRACE);
+	assert(argc <= TRACE_MAX_ARGS);
 
 	pid_t tid = gettidImpl();
 	uint64_t ns = 0;
@@ -241,7 +241,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 {
 	const char *p = fmt;
 	size_t arg_index = 0;
-	
 	while (*p != '\0') {
 		if (*p == '%' && *(p + 1) != '\0') {
 			p++; /* Skip '%' */
@@ -256,7 +255,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 			const struct trace_arg *arg = &argv[arg_index];
 			switch (arg->type) {
 			case TRACE_ARG_PTR:
-				// assert(*p == 'p');
 				if (!(*p == 'p')) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -265,7 +263,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				uint_out(writer, (uintptr_t)arg->value.ptr);
 				break;
 			case TRACE_ARG_I8:
-				// assert(strncmp(p, PRId8, sizeof(PRId8)-1) == 0);
 				if (!(strncmp(p, PRId8, sizeof(PRId8)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -275,7 +272,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRId8) - 1;
 				break;
 			case TRACE_ARG_U8:
-				// assert(strncmp(p, PRIu8, sizeof(PRIu8)-1) == 0);
 				if (!(strncmp(p, PRIu8, sizeof(PRIu8)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -285,7 +281,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRIu8) - 1;
 				break;
 			case TRACE_ARG_I16:
-				// assert(strncmp(p, PRId16, sizeof(PRId16)-1) == 0);
 				if (!(strncmp(p, PRId16, sizeof(PRId16)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -295,7 +290,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRId16) - 1;
 				break;
 			case TRACE_ARG_U16:
-				// assert(strncmp(p, PRIu16, sizeof(PRIu16)-1) == 0);
 				if (!(strncmp(p, PRIu16, sizeof(PRIu16)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -305,7 +299,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRIu16) - 1;
 				break;
 			case TRACE_ARG_I32:
-				// assert(strncmp(p, PRId32, sizeof(PRId32)-1) == 0);
 				if (!(strncmp(p, PRId32, sizeof(PRId32)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -315,7 +308,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRId32) - 1;
 				break;
 			case TRACE_ARG_U32:
-				// assert(strncmp(p, PRIu32, sizeof(PRIu32)-1) == 0);
 				if (!(strncmp(p, PRIu32, sizeof(PRIu32)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -325,7 +317,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRIu32) - 1;
 				break;
 			case TRACE_ARG_I64:
-				// assert(strncmp(p, PRId64, sizeof(PRId64)-1) == 0);
 				if (!(strncmp(p, PRId64, sizeof(PRId64)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -335,7 +326,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRId64) - 1;
 				break;
 			case TRACE_ARG_U64:
-				// assert(strncmp(p, PRIu64, sizeof(PRIu64)-1) == 0);
 				if (!(strncmp(p, PRIu64, sizeof(PRIu64)-1) == 0)) {
 					str_out(writer, "<formatting error>");
 					return;
@@ -345,7 +335,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 				p += strlen(PRIu64) - 1;
 				break;
 			case TRACE_ARG_STR:
-				// assert(*p == 's');
 				if (!(*p == 's')) {
 					str_out(writer, "<formatting error>");
 					return;

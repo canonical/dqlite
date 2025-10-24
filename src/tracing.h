@@ -198,7 +198,6 @@ static inline struct trace_arg dqlite_pointer_arg(const void *ptr)
 #define TRACE_ARGS_10(_, X, ...) TRACE_ARG(X), TRACE_ARGS_9(_, __VA_ARGS__)
 #define TRACE_ARGS_N(N, ...) MACRO_CAT(TRACE_ARGS_, N)(__VA_ARGS__)
 
-
 #define TRACE_ARGS(...)  \
   MACRO_CAT(TRACE_ARGS_, COUNT_ARGS(__VA_ARGS__)) (__VA_ARGS__)
 
