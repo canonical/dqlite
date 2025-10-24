@@ -24,6 +24,7 @@ extern int _main_suites_n;
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 void dqlite_print_trace(int skip);
+void dqlite_print_crash_trace(void);
 #endif
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
@@ -37,6 +38,7 @@ void dqlite_print_trace(int skip);
 		struct backtrace_state *state_;                          \
 		state_ = backtrace_create_state(NULL, SKIP, NULL, NULL); \
 		backtrace_print(state_, 0, stderr);                      \
+		dqlite_print_crash_trace();                                 \
 	} while (0)
 
 #elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
@@ -51,6 +53,7 @@ void dqlite_print_trace(int skip);
 			backtrace_symbols_fd(buffer + SKIP, nptrs - SKIP, \
 					     STDERR_FILENO);              \
 		}                                                         \
+		dqlite_print_crash_trace();                                 \
 	} while (0)
 
 #elif defined(HAVE_LIBUNWIND_H)
@@ -88,6 +91,7 @@ void dqlite_print_trace(int skip);
 				fprintf(stderr, "??\n");                 \
 			}                                                \
 		}                                                        \
+		dqlite_print_crash_trace();                                 \
 	} while (0)
 
 #else
@@ -116,7 +120,12 @@ void dqlite_print_trace(int skip);
 	static void print_backtrace(int sig)                                  \
 	{                                                                     \
 		(void)sig;                                                    \
-		PRINT_BACKTRACE(3);                                           \
+		static bool printing = false;                                 \
+		if (!printing) {                                              \
+			printing = true;                                      \
+			PRINT_BACKTRACE(3);                                   \
+			printing = false;                                     \
+		}                                                             \
 	}                                                                     \
                                                                               \
 	MunitSuite _main_suites[SUITE__CAP];                                  \

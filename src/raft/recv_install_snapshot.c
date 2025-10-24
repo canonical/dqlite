@@ -33,9 +33,8 @@ int recvInstallSnapshot(struct raft *r,
 
 	dqlite_assert(address != NULL);
 	tracef(
-	    "self:%llu from:%llu@%s conf_index:%llu last_index:%llu "
-	    "last_term:%llu "
-	    "term:%llu",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s conf_index: %" PRIu64 " last_index: %" PRIu64
+	    " last_term: %" PRIu64 " term: %" PRIu64,
 	    r->id, id, address, args->conf_index, args->last_index,
 	    args->last_term, args->term);
 

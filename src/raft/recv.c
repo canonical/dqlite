@@ -120,7 +120,7 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
 	dqlite_assert(r != NULL);
 	dqlite_assert(term > r->current_term);
 
-	sprintf(msg, "remote term %lld is higher than %lld -> bump local term",
+	sprintf(msg, "remote term %" PRIu64 " is higher than %" PRIu64 " -> bump local term",
 		term, r->current_term);
 	if (r->state != RAFT_FOLLOWER) {
 		strcat(msg, " and step down");
@@ -166,7 +166,7 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
 	recvCheckMatchingTerms(r, term, match);
 
 	if (*match == -1) {
-		tracef("old term - current_term:%llu other_term:%llu",
+		tracef("old term - current_term: %" PRIu64 " other_term: %" PRIu64,
 		       r->current_term, term);
 		return 0;
 	}

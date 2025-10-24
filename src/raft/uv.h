@@ -15,7 +15,7 @@
 
 /* Template string for closed segment filenames: start index (inclusive), end
  * index (inclusive). */
-#define UV__CLOSED_TEMPLATE "%016llu-%016llu"
+#define UV__CLOSED_TEMPLATE "%016" PRIu64 "-%016" PRIu64
 
 /* Template string for open segment filenames: incrementing counter. */
 #define UV__OPEN_TEMPLATE "open-%llu"
@@ -25,7 +25,7 @@
 
 /* Template string for snapshot filenames: snapshot term, snapshot index,
  * creation timestamp (milliseconds since epoch). */
-#define UV__SNAPSHOT_TEMPLATE "snapshot-%llu-%llu-%llu"
+#define UV__SNAPSHOT_TEMPLATE "snapshot-%" PRIu64 "-%" PRIu64 "-%" PRIu64
 
 #define UV__SNAPSHOT_META_SUFFIX ".meta"
 
@@ -234,7 +234,7 @@ struct uvSnapshotInfo
 {
 	raft_term term;
 	raft_index index;
-	unsigned long long timestamp;
+	raft_time timestamp;
 	char filename[UV__FILENAME_LEN];
 };
 

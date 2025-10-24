@@ -15,7 +15,7 @@
 #include "utils.h"
 #include "vfs.h"
 
-#define leader_trace(L, fmt, ...) tracef("[leader %p] "fmt, L, ##__VA_ARGS__)
+#define leader_trace(L, fmt, ...) tracef("[leader %p] "fmt, (void*)L, ##__VA_ARGS__)
 
 static bool exec_invariant(const struct sm *sm, int prev);
 static void exec_tick(struct exec *req);
@@ -469,7 +469,7 @@ static void exec_tick(struct exec *req)
 
 			if (IN(db->active_leader, NULL, leader)) {
 				db->active_leader = leader;
-				leader_trace(leader, "active leader = %p", leader);
+				leader_trace(leader, "active leader = %p", (void*)leader);
 				sm_move(&req->sm, EXEC_WAITING_QUEUE);
 				continue;
 			}
@@ -539,7 +539,7 @@ static void exec_tick(struct exec *req)
 				}
 
 				leader_trace(leader,
-					     "polled connection (%d frames)",
+					     "polled connection (%" PRIu32 " frames)",
 					     transaction.n_pages);
 				if (transaction.n_pages == 0) {
 					sm_move(&req->sm, EXEC_DONE);

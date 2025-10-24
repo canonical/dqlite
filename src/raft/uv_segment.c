@@ -568,11 +568,11 @@ static int uvSegmentLoadOpen(struct uv *uv,
 			}
 
 			tracef(
-			    "truncate open segment %s at %zu (batch %d), since "
+			    "truncate open segment %s at %" PRIu64 " (batch %d), since "
 			    "it has "
 			    "corrupted "
 			    "entries",
-			    info->filename, offset, i);
+			    info->filename, (uint64_t)offset, i);
 
 			break;
 		}
@@ -932,7 +932,7 @@ int uvSegmentLoadAll(struct uv *uv,
 				ErrMsgPrintf(uv->io->errmsg,
 					     "unexpected closed segment %s: "
 					     "first index should "
-					     "have been %llu",
+					     "have been %" PRIu64,
 					     info->filename, next_index);
 				rv = RAFT_CORRUPT;
 				goto err;
@@ -1110,7 +1110,7 @@ int uvSegmentTruncate(struct uv *uv,
 
 	dqlite_assert(!segment->is_open);
 
-	tracef("truncate %llu-%llu at %llu", segment->first_index,
+	tracef("truncate %" PRIu64 "-%" PRIu64 " at %" PRIu64, segment->first_index,
 	       segment->end_index, index);
 
 	rv = uvSegmentLoadClosed(uv, segment, &entries, &n);

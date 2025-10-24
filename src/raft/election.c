@@ -145,7 +145,7 @@ int electionStart(struct raft *r)
 			tracef("set_term failed %d", rv);
 			goto err;
 		}
-		tracef("beginning of term %llu", term);
+		tracef("beginning of term %" PRIu64, term);
 
 		/* Vote for self */
 		rv = r->io->set_vote(r->io, r->id);
@@ -181,7 +181,7 @@ int electionStart(struct raft *r)
 		rv = electionSend(r, server);
 		if (rv != 0) {
 			/* This is not a critical failure, let's just log it. */
-			tracef("failed to send vote request to server %llu: %s",
+			tracef("failed to send vote request to server %" PRIu64 ": %s",
 			       server->id, raft_strerror(rv));
 		}
 	}
@@ -253,7 +253,7 @@ int electionVote(struct raft *r,
 		/* The requesting server has last entry's log term lower than
 		 * ours. */
 		tracef(
-		    "local last entry %llu has term %llu higher than %llu -> "
+		    "local last entry %" PRIu64 " has term %" PRIu64 " higher than %" PRIu64 " -> "
 		    "not "
 		    "granting",
 		    local_last_index, local_last_term, args->last_log_term);
@@ -263,7 +263,7 @@ int electionVote(struct raft *r,
 	if (args->last_log_term > local_last_term) {
 		/* The requesting server has a more up-to-date log. */
 		tracef(
-		    "remote last entry %llu has term %llu higher than %llu -> "
+		    "remote last entry %" PRIu64 " has term %" PRIu64 " higher than %" PRIu64 " -> "
 		    "granting vote",
 		    args->last_log_index, args->last_log_term, local_last_term);
 		goto grant_vote;
@@ -297,7 +297,7 @@ grant_vote:
 		r->election_timer_start = r->io->time(r->io);
 	}
 
-	tracef("vote granted to %llu", args->candidate_id);
+	tracef("vote granted to %" PRIu64, args->candidate_id);
 	*granted = true;
 
 	return 0;

@@ -260,8 +260,8 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	snapshot->configuration_index = byteFlip64(header[2]);
 	buf.len = (size_t)byteFlip64(header[3]);
 	if (buf.len > UV__META_MAX_CONFIGURATION_SIZE) {
-		tracef("load %s: configuration data too big (%zd)",
-		       info->filename, buf.len);
+		tracef("load %s: configuration data too big (%" PRIu64 ")",
+		       info->filename, (uint64_t)buf.len);
 		rv = RAFT_CORRUPT;
 		goto err_after_open;
 	}
@@ -379,7 +379,7 @@ struct uvSnapshotPut
 	const struct raft_snapshot *snapshot;
 	struct
 	{
-		unsigned long long timestamp;
+		raft_time timestamp;
 		uint64_t header[4]; /* Format, CRC, configuration index/len */
 		struct raft_buffer bufs[2]; /* Preamble and configuration */
 	} meta;
@@ -571,7 +571,7 @@ static void uvSnapshotPutStart(struct uvSnapshotPut *put)
 	rv = uv_queue_work(uv->loop, &uv->snapshot_put_work,
 			   uvSnapshotPutWorkCb, uvSnapshotPutAfterWorkCb);
 	if (rv != 0) {
-		tracef("store snapshot %lld: %s", put->snapshot->index,
+		tracef("store snapshot %" PRIu64 ": %s", put->snapshot->index,
 		       uv_strerror(rv));
 		uv->errored = true;
 	}
@@ -618,7 +618,7 @@ int UvSnapshotPut(struct raft_io *io,
 
 	dqlite_assert(uv->snapshot_put_work.data == NULL);
 
-	tracef("put snapshot at %lld, keeping %d", snapshot->index, trailing);
+	tracef("put snapshot at %" PRIu64 ", keeping %d", snapshot->index, trailing);
 
 	put = RaftHeapMalloc(sizeof *put);
 	if (put == NULL) {

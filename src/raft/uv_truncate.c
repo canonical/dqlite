@@ -202,7 +202,7 @@ static void uvTruncateBarrierCb(struct UvBarrierReq *barrier)
 	rv = uv_queue_work(uv->loop, &uv->truncate_work, uvTruncateWorkCb,
 			   uvTruncateAfterWorkCb);
 	if (rv != 0) {
-		tracef("truncate index %lld: %s", truncate->index,
+		tracef("truncate index %" PRIu64 ": %s", truncate->index,
 		       uv_strerror(rv));
 		tracef("clear truncate work");
 		uv->truncate_work.data = NULL;
@@ -219,7 +219,7 @@ int UvTruncate(struct raft_io *io,
 	int rv;
 
 	uv = io->impl;
-	tracef("uv truncate %llu", index);
+	tracef("uv truncate %" PRIu64, index);
 	dqlite_assert(!uv->closing);
 
 	/* We should truncate only entries that we were requested to append in

@@ -258,7 +258,7 @@ bool progressMaybeDecrement(struct raft *r,
 	 * not match the next index minus one. */
 	if (rejected != p->next_index - 1) {
 		tracef(
-		    "rejected index %llu different from next index %lld -> "
+		    "rejected index %" PRIu64 " different from next index %" PRIu64 " -> "
 		    "ignore ",
 		    rejected, p->next_index);
 		return false;

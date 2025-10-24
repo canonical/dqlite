@@ -73,22 +73,22 @@ enum {
  */
 RAFT_API const char *raft_strerror(int errnum);
 
-typedef unsigned long long raft_id;
+typedef uint64_t raft_id;
 
 /**
  * Hold the value of a raft term. Guaranteed to be at least 64-bit long.
  */
-typedef unsigned long long raft_term;
+typedef uint64_t raft_term;
 
 /**
  * Hold the value of a raft entry index. Guaranteed to be at least 64-bit long.
  */
-typedef unsigned long long raft_index;
+typedef uint64_t raft_index;
 
 /**
  * Hold a time value expressed in milliseconds since the epoch.
  */
-typedef unsigned long long raft_time;
+typedef uint64_t raft_time;
 
 /**
  * Hold the features a raft node is capable of.

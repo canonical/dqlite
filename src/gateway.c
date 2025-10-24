@@ -282,7 +282,7 @@ static int handle_leader(struct gateway *g, struct handle *req)
 	for (i = 0; i < g->raft->configuration.n; i++) {
 		struct raft_server *server = &g->raft->configuration.servers[i];
 		if (server->id == g->raft->id && server->role == RAFT_VOTER) {
-			tracef("handle leader - dispatch to %llu", server->id);
+			tracef("handle leader - dispatch to %" PRIu64, server->id);
 			raft_leader(g->raft, &id, &address);
 			break;
 		}

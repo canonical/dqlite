@@ -21,7 +21,7 @@ int raft_apply(struct raft *r,
 	const struct sm *entry_sm;
 	int rv;
 
-	tracef("raft_apply n %d", n);
+	tracef("raft_apply n %u", n);
 
 	dqlite_assert(r != NULL);
 	dqlite_assert(bufs != NULL);
@@ -36,7 +36,7 @@ int raft_apply(struct raft *r,
 
 	/* Index of the first entry being appended. */
 	start = logLastIndex(r->log) + 1;
-	tracef("%u commands starting at %lld", n, start);
+	tracef("%u commands starting at %" PRIu64, n, start);
 	req->type = RAFT_COMMAND;
 	req->index = start;
 	req->cb = cb;
@@ -129,7 +129,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 		return RAFT_NOMEM;
 	}
 
-	tracef("barrier starting at %lld", req->index);
+	tracef("barrier starting at %" PRIu64, req->index);
 	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
 	if (rv != 0) {
 		goto err_after_buf_alloc;
@@ -221,7 +221,7 @@ int raft_add(struct raft *r,
 		return rv;
 	}
 
-	tracef("add server: id %llu, address %s", id, address);
+	tracef("add server: id %" PRIu64 ", address %s", id, address);
 
 	/* Make a copy of the current configuration, and add the new server to
 	 * it. */
@@ -265,7 +265,7 @@ int raft_assign(struct raft *r,
 	raft_index last_index;
 	int rv;
 
-	tracef("raft_assign to id:%llu the role:%d", id, role);
+	tracef("raft_assign to id:%" PRIu64 " the role:%d", id, role);
 	if (role != RAFT_STANDBY && role != RAFT_VOTER && role != RAFT_SPARE) {
 		rv = RAFT_BADROLE;
 		ErrMsgFromCode(r->errmsg, rv);
@@ -280,7 +280,7 @@ int raft_assign(struct raft *r,
 	server = configurationGet(&r->configuration, id);
 	if (server == NULL) {
 		rv = RAFT_NOTFOUND;
-		ErrMsgPrintf(r->errmsg, "no server has ID %llu", id);
+		ErrMsgPrintf(r->errmsg, "no server has ID %" PRIu64, id);
 		goto err;
 	}
 
@@ -346,7 +346,7 @@ int raft_assign(struct raft *r,
 	rv = replicationProgress(r, server_index);
 	if (rv != 0 && rv != RAFT_NOCONNECTION) {
 		/* This error is not fatal. */
-		tracef("failed to send append entries to server %llu: %s (%d)",
+		tracef("failed to send append entries to server %" PRIu64 ": %s (%d)",
 		       server->id, raft_strerror(rv), rv);
 	}
 
@@ -377,7 +377,7 @@ int raft_remove(struct raft *r,
 		goto err;
 	}
 
-	tracef("remove server: id %llu", id);
+	tracef("remove server: id %" PRIu64, id);
 
 	/* Make a copy of the current configuration, and remove the given server
 	 * from it. */
@@ -444,7 +444,7 @@ int raft_transfer(struct raft *r,
 	unsigned i;
 	int rv;
 
-	tracef("transfer to %llu", id);
+	tracef("transfer to %" PRIu64, id);
 	if (r->state != RAFT_LEADER || r->transfer != NULL) {
 		tracef("transfer error - state:%d", r->state);
 		rv = RAFT_NOTLEADER;

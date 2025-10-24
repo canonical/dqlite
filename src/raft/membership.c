@@ -20,14 +20,14 @@ int membershipCanChangeConfiguration(struct raft *r)
 	}
 
 	if (r->configuration_uncommitted_index != 0) {
-		tracef("r->configuration_uncommitted_index %llu",
+		tracef("r->configuration_uncommitted_index %" PRIu64,
 		       r->configuration_uncommitted_index);
 		rv = RAFT_CANTCHANGE;
 		goto err;
 	}
 
 	if (r->leader_state.promotee_id != 0) {
-		tracef("r->leader_state.promotee_id %llu",
+		tracef("r->leader_state.promotee_id %" PRIu64,
 		       r->leader_state.promotee_id);
 		rv = RAFT_CANTCHANGE;
 		goto err;
@@ -102,10 +102,9 @@ bool membershipUpdateCatchUpRound(struct raft *r)
 	/* If the server did not reach the target index for this round, it did
 	 * not catch up. */
 	if (match_index < r->leader_state.round_index) {
-		tracef(
-		    "member (index: %u) not yet caught up match_index:%llu "
-		    "round_index:%llu",
-		    server_index, match_index, r->leader_state.round_index);
+		tracef("member (index: %u) not yet caught up match_index: %" PRIu64
+		       " round_index: %" PRIu64,
+		       server_index, match_index, r->leader_state.round_index);
 		return false;
 	}
 
@@ -153,12 +152,12 @@ int membershipUncommittedChange(struct raft *r,
 
 	rv = configurationDecode(&entry->buf, &configuration);
 	if (rv != 0) {
-		tracef("failed to decode configuration at index:%llu", index);
+		tracef("failed to decode configuration at index: %" PRIu64, index);
 		goto err;
 	}
 
 	/* ignore errors */
-	snprintf(msg, sizeof(msg), "uncommitted config change at index:%llu",
+	snprintf(msg, sizeof(msg), "uncommitted config change at index: %" PRIu64,
 		 index);
 	configurationTrace(r, &configuration, msg);
 
@@ -262,7 +261,7 @@ int membershipLeadershipTransferStart(struct raft *r)
 	if (rv != 0) {
 		RaftHeapFree(send);
 		ErrMsgTransferf(r->io->errmsg, r->errmsg,
-				"send timeout now to %llu", server->id);
+				"send timeout now to %" PRIu64, server->id);
 		return rv;
 	}
 	return 0;

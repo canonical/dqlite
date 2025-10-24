@@ -1,5 +1,6 @@
 #include "../raft.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -394,7 +395,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		}
 		uvSnapshotFilenameOf(&snapshots[n_snapshots - 1],
 				     snapshot_filename);
-		tracef("most recent snapshot at %lld", (*snapshot)->index);
+		tracef("most recent snapshot at %" PRIu64, (*snapshot)->index);
 		RaftHeapFree(snapshots);
 		snapshots = NULL;
 
@@ -438,9 +439,9 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		last_index = *start_index + *n - 1;
 		if (*snapshot != NULL && last_index < (*snapshot)->index) {
 			ErrMsgPrintf(uv->io->errmsg,
-				     "last entry on disk has index %llu, which "
+				     "last entry on disk has index %" PRIu64 ", which "
 				     "is behind "
-				     "last snapshot's index %llu",
+				     "last snapshot's index %" PRIu64,
 				     last_index, (*snapshot)->index);
 			rv = RAFT_CORRUPT;
 			goto err;
@@ -505,7 +506,7 @@ static int uvLoad(struct raft_io *io,
 	if (rv != 0) {
 		return rv;
 	}
-	tracef("start index %lld, %zu entries", *start_index, *n_entries);
+	tracef("start index %" PRIu64 ", %" PRIu64 " entries", *start_index, (uint64_t)*n_entries);
 	if (*snapshot == NULL) {
 		tracef("no snapshot");
 	}
@@ -557,7 +558,7 @@ static int uvBootstrap(struct raft_io *io,
 
 	/* We shouldn't have written anything else yet. */
 	if (uv->metadata.term != 0) {
-		ErrMsgPrintf(io->errmsg, "metadata contains term %lld",
+		ErrMsgPrintf(io->errmsg, "metadata contains term %" PRIu64,
 			     uv->metadata.term);
 		return RAFT_CANTBOOTSTRAP;
 	}

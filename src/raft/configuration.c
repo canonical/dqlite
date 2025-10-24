@@ -394,7 +394,7 @@ void configurationTrace(const struct raft *r,
 	struct raft_server *s;
 	for (i = 0; i < c->n; i++) {
 		s = &c->servers[i];
-		tracef("id:%llu address:%s role:%d", s->id, s->address,
+		tracef("id:%" PRIu64 " address:%s role:%d", s->id, s->address,
 		       s->role);
 	}
 	tracef("=== CONFIG END ===");

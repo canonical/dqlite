@@ -20,7 +20,7 @@ AM_LDFLAGS = $(static)
 AM_LDFLAGS += $(UV_LIBS) $(PTHREAD_LIBS)
 
 if DEBUG_ENABLED
-AM_CFLAGS += -O0
+AM_CFLAGS += -O0 -g
 else
 AM_CFLAGS += -O2
 endif

@@ -23,8 +23,8 @@ int recvRequestVoteResult(struct raft *r,
 	dqlite_assert(id > 0);
 
 	tracef(
-	    "self:%llu from:%llu@%s term:%llu vote_granted:%d pre_vote:%d "
-	    "version:%d",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s term: %" PRIu64 " vote_granted: %d pre_vote: %d "
+	    "version: %d",
 	    r->id, id, address, result->term, result->vote_granted,
 	    result->pre_vote, result->version);
 	votes_index = configurationIndexOfVoter(&r->configuration, id);
