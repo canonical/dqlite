@@ -378,8 +378,6 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 	    uint32_t: uint_out,         \
 	    int64_t: int_out,          \
 	    uint64_t: uint_out,         \
-		signed long long: int_out,     \
-		unsigned long long: uint_out,    \
 	    const char *: str_out,  \
 	    char *: str_out  \
 	)((W), (X))
