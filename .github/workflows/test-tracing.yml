@@ -18,179 +18,180 @@ jobs:
     - uses: actions/checkout@v5
 
     - name: Generate tracef test
-      shell: node
-      run: |
-        const child_process = require('child_process');
-        const fs = require('fs');
-        const readline = require('readline');
-        const util = require('util');
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const child_process = require('child_process');
+          const fs = require('fs');
+          const readline = require('readline');
+          const util = require('util');
 
-        let output = fs.createWriteStream("debug_trace_generated.c", { flags: 'w' });
+          let output = fs.createWriteStream("debug_trace_generated.c", { flags: 'w' });
 
-        output.write(`
-        #include <fcntl.h>
-        #include <stdint.h>
-        #include <stdlib.h>
-        #include <sys/types.h>
+          output.write(`
+          #include <fcntl.h>
+          #include <stdint.h>
+          #include <stdlib.h>
+          #include <sys/types.h>
 
-        #define dqlite_tracef dqlite_tracef_real
-        #include "src/tracing.c"
-        #undef dqlite_tracef
+          #define dqlite_tracef dqlite_tracef_real
+          #include "src/tracing.c"
+          #undef dqlite_tracef
 
-        #include "src/raft.h"
+          #include "src/raft.h"
 
-        FILE *check_file;
-        int test_file;
+          FILE *check_file;
+          int test_file;
 
-        void dqlite_tracef(const char *file, unsigned int line, const char *func, unsigned int level, const char *fmt, ...) {
-          va_list args;
-          va_start(args, fmt);
-          vfprintf(check_file, fmt, args);
-          putc('\\n', check_file);
-          va_end(args);
-        }
-
-        static uint64_t test_seed;
-
-        unsigned long generate_unsigned_long() {
-          return (unsigned long)test_seed;
-        }
-
-        int generate_int() {
-          return (int)test_seed;
-        }
-
-        pid_t generate_pid_t() {
-          return (pid_t)(test_seed % 32768);
-        }
-
-        uint32_t generate_uint32_t() {
-          return (uint32_t)test_seed;
-        }
-
-        int32_t generate_int32_t() {
-          return (int32_t)test_seed;
-        }
-
-        uint64_t generate_uint64_t() {
-          return (uint64_t)test_seed;
-        }
-
-        int64_t generate_int64_t() {
-          return (int64_t)test_seed;
-        }
-
-        unsigned int generate_unsigned_int() {
-          return (unsigned int)test_seed;
-        }
-
-        void* generate_void_ptr() {
-          return (void*)test_seed;
-        }
-
-        raft_id generate_raft_id() {
-          return (raft_id)test_seed;
-        }
-
-        char* generate_char_ptr() {
-          static char buffer[20];
-          static bool initializer = false;
-          if (!initializer) {
-            snprintf(buffer, sizeof(buffer), "str_%d", generate_int());
-            initializer = true;
+          void dqlite_tracef(const char *file, unsigned int line, const char *func, unsigned int level, const char *fmt, ...) {
+            va_list args;
+            va_start(args, fmt);
+            vfprintf(check_file, fmt, args);
+            putc('\\n', check_file);
+            va_end(args);
           }
-          return buffer;
-        }
 
-        const char* generate_const_char_ptr() {
-          return generate_char_ptr();
-        }
+          static uint64_t test_seed;
 
-        raft_index generate_raft_index() {
-          return (raft_index)test_seed;
-        }
+          unsigned long generate_unsigned_long() {
+            return (unsigned long)test_seed;
+          }
 
-        raft_term generate_raft_term() {
-          return (raft_term)test_seed;
-        }
+          int generate_int() {
+            return (int)test_seed;
+          }
 
-        raft_time generate_raft_time() {
-          return (raft_time)test_seed;
-        }
+          pid_t generate_pid_t() {
+            return (pid_t)(test_seed % 32768);
+          }
 
-        int main() {
-          _dqliteTracingEnabled = true;
-          srand(time(NULL));
-          test_seed = ((uint64_t)rand()) << 32 | (uint64_t)rand();
+          uint32_t generate_uint32_t() {
+            return (uint32_t)test_seed;
+          }
 
-          check_file = fopen("check.txt", "w");
-          test_file = open("test.txt", O_CREAT | O_WRONLY | O_TRUNC, 0664);
-        `)
+          int32_t generate_int32_t() {
+            return (int32_t)test_seed;
+          }
 
-        const glob = util.promisify(fs.glob);
+          uint64_t generate_uint64_t() {
+            return (uint64_t)test_seed;
+          }
 
-        glob("src/**/*.c")
-          .then(results => results.flat())
-          .then(sources => {
-            let running = 0;
-            let schedule_one = () => {
-              if (sources.length === 0) {
-                running--;
-                if (running === 0) {
-                  output.write(`
-          dqlite_print_crash_trace(test_file);
-          return 0;
-        }`);
-                  output.end();
+          int64_t generate_int64_t() {
+            return (int64_t)test_seed;
+          }
+
+          unsigned int generate_unsigned_int() {
+            return (unsigned int)test_seed;
+          }
+
+          void* generate_void_ptr() {
+            return (void*)test_seed;
+          }
+
+          raft_id generate_raft_id() {
+            return (raft_id)test_seed;
+          }
+
+          char* generate_char_ptr() {
+            static char buffer[20];
+            static bool initializer = false;
+            if (!initializer) {
+              snprintf(buffer, sizeof(buffer), "str_%d", generate_int());
+              initializer = true;
+            }
+            return buffer;
+          }
+
+          const char* generate_const_char_ptr() {
+            return generate_char_ptr();
+          }
+
+          raft_index generate_raft_index() {
+            return (raft_index)test_seed;
+          }
+
+          raft_term generate_raft_term() {
+            return (raft_term)test_seed;
+          }
+
+          raft_time generate_raft_time() {
+            return (raft_time)test_seed;
+          }
+
+          int main() {
+            _dqliteTracingEnabled = true;
+            srand(time(NULL));
+            test_seed = ((uint64_t)rand()) << 32 | (uint64_t)rand();
+
+            check_file = fopen("check.txt", "w");
+            test_file = open("test.txt", O_CREAT | O_WRONLY | O_TRUNC, 0664);
+          `)
+
+          const glob = util.promisify(fs.glob);
+
+          glob("src/**/*.c")
+            .then(results => results.flat())
+            .then(sources => {
+              let running = 0;
+              let schedule_one = () => {
+                if (sources.length === 0) {
+                  running--;
+                  if (running === 0) {
+                    output.write(`
+            dqlite_print_crash_trace(test_file);
+            return 0;
+          }`);
+                    output.end();
+                  }
+                  return;
                 }
-                return;
-              }
 
-              let source = sources.pop();
-              console.log(`Processing ${source}... ${sources.length} remaining.`);
-              const cmd = `clang -D_GNU_SOURCE -Xclang -ast-dump=json -fsyntax-only ${source} | jq -c '.. | objects | select(.kind == "CallExpr")'`;
-              const child = child_process.spawn(cmd, { shell: true });
-              const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-              rl.on('line', (line) => {
-                let node = JSON.parse(line);
-                if (isDqliteTracefCall(node)) {
-                  let format = getString(node.inner[5]);
-                  let args = node.inner.slice(6).map(n => "generate_" + n.type.qualType.replaceAll("*", "ptr").replaceAll(" ", "_") + "()");
-                  output.write(`  tracef(${[format, ...args].join(", ")}); // from ${source}\n`);
-                }
-              });
+                let source = sources.pop();
+                console.log(`Processing ${source}... ${sources.length} remaining.`);
+                const cmd = `clang -D_GNU_SOURCE -Xclang -ast-dump=json -fsyntax-only ${source} | jq -c '.. | objects | select(.kind == "CallExpr")'`;
+                const child = child_process.spawn(cmd, { shell: true });
+                const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+                rl.on('line', (line) => {
+                  let node = JSON.parse(line);
+                  if (isDqliteTracefCall(node)) {
+                    let format = getString(node.inner[5]);
+                    let args = node.inner.slice(6).map(n => "generate_" + n.type.qualType.replaceAll("*", "ptr").replaceAll(" ", "_") + "()");
+                    output.write(`  tracef(${[format, ...args].join(", ")}); // from ${source}\n`);
+                  }
+                });
 
-              rl.on('close', () => {
+                rl.on('close', () => {
+                  schedule_one();
+                });
+              };
+
+              for (let i = 0; i < 4; i++) {
                 schedule_one();
-              });
-            };
+                running++;
+              }
+            });
 
-            for (let i = 0; i < 4; i++) {
-              schedule_one();
-              running++;
+          function getString(node) {
+            if (node.kind === "StringLiteral") {
+              return node.value;
             }
-          });
-
-        function getString(node) {
-          if (node.kind === "StringLiteral") {
-            return node.value;
-          }
-          return getString(node.inner[0]);
-        }
-
-        function isDqliteTracefCall(node) {
-          if (node.kind !== "CallExpr") return false;
-          let callee = node.inner[0];
-          while (callee && callee.kind !== "DeclRefExpr") {
-            if (callee.inner && callee.inner.length > 0) {
-              callee = callee.inner[0];
-            } else {
-              return false;
-            }
+            return getString(node.inner[0]);
           }
 
-          return callee && callee.kind === "DeclRefExpr" && callee.referencedDecl.name === "dqlite_tracef";
-        }
+          function isDqliteTracefCall(node) {
+            if (node.kind !== "CallExpr") return false;
+            let callee = node.inner[0];
+            while (callee && callee.kind !== "DeclRefExpr") {
+              if (callee.inner && callee.inner.length > 0) {
+                callee = callee.inner[0];
+              } else {
+                return false;
+              }
+            }
+
+            return callee && callee.kind === "DeclRefExpr" && callee.referencedDecl.name === "dqlite_tracef";
+          }
 
     - name: Build tracef test
       shell: bash
@@ -203,131 +204,132 @@ jobs:
         ./debug_trace_test
 
     - name: Compare tracef output
-      shell: node
-      run: |
-        /**
-         * Script to validate that test.txt trace output matches expected format
-         * compared to check.txt reference output.
-         */
-        const fs = require('fs');
-        const path = require('path');
-        function validateTraceOutput(checkLines, testLines) {
-          const errors = [];
-          let messageCount = 0;
+      uses: actions/github-script@v8
+      with:
+        script: |
+          /**
+          * Script to validate that test.txt trace output matches expected format
+          * compared to check.txt reference output.
+          */
+          const fs = require('fs');
+          const path = require('path');
+          function validateTraceOutput(checkLines, testLines) {
+            const errors = [];
+            let messageCount = 0;
 
-          // Check header line
-          if (testLines.length === 0) {
-            errors.push('Test file is empty');
-            return { success: false, errors, messageCount: 0 };
+            // Check header line
+            if (testLines.length === 0) {
+              errors.push('Test file is empty');
+              return { success: false, errors, messageCount: 0 };
+            }
+
+            const headerLine = testLines[0];
+            const headerMatch = headerLine.match(/Tentatively showing last (\d+) crash trace records:/);
+            if (!headerMatch) {
+              errors.push(`Invalid header format: ${headerLine}`);
+              return { success: false, errors, messageCount: 0 };
+            }
+
+            const expectedTraceCount = parseInt(headerMatch[1]);
+            const actualTraceLines = testLines.slice(1);
+
+            if (expectedTraceCount !== checkLines.length) {
+              errors.push(`Header says ${expectedTraceCount} records but check.txt has ${checkLines.length} lines`);
+            }
+
+            if (actualTraceLines.length !== checkLines.length) {
+              errors.push(`Expected ${checkLines.length} trace lines but got ${actualTraceLines.length}`);
+              return { success: false, errors, messageCount: 0 };
+            }
+
+            let previousTimestamp = 0;
+            let expectedPid = null;
+            let expectedLine = null;
+
+            for (let i = 0; i < actualTraceLines.length; i++) {
+              const traceLine = actualTraceLines[i];
+              const checkMessage = checkLines[i];
+
+              const traceMatch = traceLine.match(/^\s*(\d+)\s+(\d+)\s+([^:]+):(\d+)\s+(\w+)\s+(.*)$/);
+
+              if (!traceMatch) {
+                errors.push(`Line ${i + 2}: Invalid trace format: ${traceLine}`);
+                continue;
+              }
+
+              const [, timestamp, pid, filename, lineNum, functionName, message] = traceMatch;
+
+              const currentTimestamp = parseInt(timestamp);
+              if (currentTimestamp <= previousTimestamp) {
+                errors.push(`Line ${i + 2}: Timestamp ${currentTimestamp} is not greater than previous ${previousTimestamp}`);
+              }
+              previousTimestamp = currentTimestamp;
+
+              if (expectedPid === null) {
+                expectedPid = pid;
+              } else if (pid !== expectedPid) {
+                errors.push(`Line ${i + 2}: PID ${pid} differs from expected ${expectedPid}`);
+              }
+
+              if (filename !== 'debug_trace_generated.c') {
+                errors.push(`Line ${i + 2}: Filename '${filename}' should be 'debug_trace_generated.c'`);
+              }
+
+              const currentLineNum = parseInt(lineNum);
+              if (expectedLine === null) {
+                expectedLine = currentLineNum;
+              }
+              if (currentLineNum !== expectedLine) {
+                errors.push(`Line ${i + 2}: Line number ${currentLineNum} should be ${expectedLine}`);
+              }
+              expectedLine++;
+
+              if (functionName !== 'main') {
+                errors.push(`Line ${i + 2}: Function '${functionName}' should be 'main'`);
+              }
+
+              const cleanMessage = message.trim();
+              const cleanCheckMessage = checkMessage.trim();
+              if (cleanMessage !== cleanCheckMessage) {
+                errors.push(`Line ${i + 2}: Message mismatch`);
+                errors.push(`  Expected: "${cleanCheckMessage}"`);
+                errors.push(`  Got:      "${cleanMessage}"`);
+              }
+
+              messageCount++;
+            }
+
+            return {
+              success: errors.length === 0,
+              errors,
+              messageCount
+            };
           }
 
-          const headerLine = testLines[0];
-          const headerMatch = headerLine.match(/Tentatively showing last (\d+) crash trace records:/);
-          if (!headerMatch) {
-            errors.push(`Invalid header format: ${headerLine}`);
-            return { success: false, errors, messageCount: 0 };
-          }
+          const checkFile = 'check.txt';
+          const testFile = 'test.txt';
 
-          const expectedTraceCount = parseInt(headerMatch[1]);
-          const actualTraceLines = testLines.slice(1);
+          try {
+            // Read both files
+            const checkLines = fs.readFileSync(checkFile, 'utf8').trim().split('\n');
+            const testLines = fs.readFileSync(testFile, 'utf8').trim().split('\n');
 
-          if (expectedTraceCount !== checkLines.length) {
-            errors.push(`Header says ${expectedTraceCount} records but check.txt has ${checkLines.length} lines`);
-          }
+            console.log(`Check file has ${checkLines.length} lines`);
+            console.log(`Test file has ${testLines.length} lines`);
 
-          if (actualTraceLines.length !== checkLines.length) {
-            errors.push(`Expected ${checkLines.length} trace lines but got ${actualTraceLines.length}`);
-            return { success: false, errors, messageCount: 0 };
-          }
+            // Validate test file structure
+            const result = validateTraceOutput(checkLines, testLines);
 
-          let previousTimestamp = 0;
-          let expectedPid = null;
-          let expectedLine = null;
-
-          for (let i = 0; i < actualTraceLines.length; i++) {
-            const traceLine = actualTraceLines[i];
-            const checkMessage = checkLines[i];
-
-            const traceMatch = traceLine.match(/^\s*(\d+)\s+(\d+)\s+([^:]+):(\d+)\s+(\w+)\s+(.*)$/);
-
-            if (!traceMatch) {
-              errors.push(`Line ${i + 2}: Invalid trace format: ${traceLine}`);
-              continue;
+            if (result.success) {
+              console.log('✅ All validation checks passed!');
+              console.log(`Validated ${result.messageCount} trace messages`);
+            } else {
+              console.error('❌ Validation failed:');
+              result.errors.forEach(error => console.error(`  - ${error}`));
+              process.exit(1);
             }
 
-            const [, timestamp, pid, filename, lineNum, functionName, message] = traceMatch;
-
-            const currentTimestamp = parseInt(timestamp);
-            if (currentTimestamp <= previousTimestamp) {
-              errors.push(`Line ${i + 2}: Timestamp ${currentTimestamp} is not greater than previous ${previousTimestamp}`);
-            }
-            previousTimestamp = currentTimestamp;
-
-            if (expectedPid === null) {
-              expectedPid = pid;
-            } else if (pid !== expectedPid) {
-              errors.push(`Line ${i + 2}: PID ${pid} differs from expected ${expectedPid}`);
-            }
-
-            if (filename !== 'debug_trace_generated.c') {
-              errors.push(`Line ${i + 2}: Filename '${filename}' should be 'debug_trace_generated.c'`);
-            }
-
-            const currentLineNum = parseInt(lineNum);
-            if (expectedLine === null) {
-              expectedLine = currentLineNum;
-            }
-            if (currentLineNum !== expectedLine) {
-              errors.push(`Line ${i + 2}: Line number ${currentLineNum} should be ${expectedLine}`);
-            }
-            expectedLine++;
-
-            if (functionName !== 'main') {
-              errors.push(`Line ${i + 2}: Function '${functionName}' should be 'main'`);
-            }
-
-            const cleanMessage = message.trim();
-            const cleanCheckMessage = checkMessage.trim();
-            if (cleanMessage !== cleanCheckMessage) {
-              errors.push(`Line ${i + 2}: Message mismatch`);
-              errors.push(`  Expected: "${cleanCheckMessage}"`);
-              errors.push(`  Got:      "${cleanMessage}"`);
-            }
-
-            messageCount++;
-          }
-
-          return {
-            success: errors.length === 0,
-            errors,
-            messageCount
-          };
-        }
-
-        const checkFile = 'check.txt';
-        const testFile = 'test.txt';
-
-        try {
-          // Read both files
-          const checkLines = fs.readFileSync(checkFile, 'utf8').trim().split('\n');
-          const testLines = fs.readFileSync(testFile, 'utf8').trim().split('\n');
-
-          console.log(`Check file has ${checkLines.length} lines`);
-          console.log(`Test file has ${testLines.length} lines`);
-
-          // Validate test file structure
-          const result = validateTraceOutput(checkLines, testLines);
-
-          if (result.success) {
-            console.log('✅ All validation checks passed!');
-            console.log(`Validated ${result.messageCount} trace messages`);
-          } else {
-            console.error('❌ Validation failed:');
-            result.errors.forEach(error => console.error(`  - ${error}`));
+          } catch (error) {
+            console.error(`Error: ${error.message}`);
             process.exit(1);
           }
-
-        } catch (error) {
-          console.error(`Error: ${error.message}`);
-          process.exit(1);
-        }
