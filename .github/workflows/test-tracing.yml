@@ -128,9 +128,7 @@ jobs:
             test_file = open("test.txt", O_CREAT | O_WRONLY | O_TRUNC, 0664);
           `)
 
-          const glob = util.promisify(fs.glob);
-
-          glob("src/**/*.c")
+          util.promisify(fs.glob)("src/**/*.c")
             .then(results => results.flat())
             .then(sources => {
               let running = 0;
