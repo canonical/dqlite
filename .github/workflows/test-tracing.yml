@@ -17,6 +17,11 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
+    - name: Set up dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y libuv1-dev
+
     - name: Generate tracef test
       uses: actions/github-script@v8
       with:
