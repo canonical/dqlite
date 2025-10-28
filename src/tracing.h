@@ -157,7 +157,12 @@ static inline struct trace_arg dqlite_u64_arg(uint64_t value)
 static inline struct trace_arg dqlite_string_arg(const char *str)
 {
 	struct trace_arg arg = { .type = TRACE_ARG_STR };
-	strlcpy(arg.value.str, str, sizeof(arg.value.str));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+	strncpy(arg.value.str, str, sizeof(arg.value.str)-1);
+	arg.value.str[sizeof(arg.value.str)-1] = '\0';
+#pragma GCC diagnostic pop
 	return arg;
 }
 
