@@ -1,11 +1,11 @@
-name: CI Tests
+name: CI Tracef Tests
 
 on:
   - push
   - pull_request
 
 jobs:
-  build-and-test:
+  test-tracef:
     strategy:
       fail-fast: false
       matrix:
