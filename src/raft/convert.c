@@ -20,7 +20,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 	 * respect to the paper we have an additional "unavailable" state, which
 	 * is the initial or final state. */
 	unsigned short old_state = r->state;
-	tracef("old_state:%u new_state:%u", old_state, new_state);
+	tracef("old_state: %u new_state: %u", (unsigned int)old_state, (unsigned int)new_state);
 	dqlite_assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
 	       (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
 	       (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||

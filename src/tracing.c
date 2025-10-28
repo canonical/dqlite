@@ -204,6 +204,26 @@ static void uint_out(struct trace_buffer *writer, uint64_t value)
 	}
 }
 
+static void ptr_out(struct trace_buffer *writer, const void *ptr)
+{
+	uintptr_t value = (uintptr_t)ptr;
+	str_out(writer, "0x");
+
+	bool leading_zero = true;
+	for (size_t i = 0; i < sizeof(uintptr_t) * 2; i++) {
+		uint8_t nibble = (value >> ((sizeof(uintptr_t) * 2 - 1 - i) * 4)) & 0xF;
+		if (nibble == 0 && leading_zero) {
+			continue;
+		}
+		leading_zero = false;
+		if (nibble < 10) {
+			char_out(writer, (char)('0' + nibble));
+		} else {
+			char_out(writer, (char)('a' + (nibble - 10)));
+		}
+	}
+}
+
 static void flush_out(struct trace_buffer *writer)
 {
 	if (writer->pos > 0) {
@@ -260,7 +280,7 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 					return;
 				}
 
-				uint_out(writer, (uintptr_t)arg->value.ptr);
+				ptr_out(writer, arg->value.ptr);
 				break;
 			case TRACE_ARG_I8:
 				if (!(strncmp(p, PRId8, sizeof(PRId8)-1) == 0)) {
@@ -355,8 +375,7 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 	}
 }
 
-
-#define WRITE_ONE(W, X)                          \
+#define WRITE_ONE(X)                          \
 	_Generic((X),                         \
 	    bool: uint_out,              \
 	    int8_t: int_out,            \
@@ -369,30 +388,24 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 	    uint64_t: uint_out,         \
 	    const char *: str_out,  \
 	    char *: str_out  \
-	)((W), (X))
+	)(&writer, (X))
 
-#define WRITE_OUT_0(W)
-#define WRITE_OUT_1(W, X) WRITE_ONE(W, X)
-#define WRITE_OUT_2(W, X, Y) WRITE_ONE(W, X), WRITE_ONE(W, Y)
-#define WRITE_OUT_3(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_2(W, __VA_ARGS__)
-#define WRITE_OUT_4(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_3(W, __VA_ARGS__)
-#define WRITE_OUT_5(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_4(W, __VA_ARGS__)
-#define WRITE_OUT_6(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_5(W, __VA_ARGS__)
-#define WRITE_OUT_7(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_6(W, __VA_ARGS__)
-#define WRITE_OUT_8(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_7(W, __VA_ARGS__)
-#define WRITE_OUT_9(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_8(W, __VA_ARGS__)
-#define WRITE_OUT_10(W, X, ...) WRITE_ONE(W, X), WRITE_OUT_9(W, __VA_ARGS__)
-#define WRITE_OUT(W, ...) MACRO_CAT(WRITE_OUT_, COUNT_ARGS(__VA_ARGS__))(W, __VA_ARGS__)
-
-static struct trace_record print_records[DQLITE_MAX_CRASH_TRACE];
+#define WRITE_OUT_0()
+#define WRITE_OUT_1(X) WRITE_ONE(X)
+#define WRITE_OUT_2(X, Y) WRITE_ONE(X), WRITE_ONE(Y)
+#define WRITE_OUT_3(X, ...) WRITE_ONE(X), WRITE_OUT_2(__VA_ARGS__)
+#define WRITE_OUT_4(X, ...) WRITE_ONE(X), WRITE_OUT_3(__VA_ARGS__)
+#define WRITE_OUT_5(X, ...) WRITE_ONE(X), WRITE_OUT_4(__VA_ARGS__)
+#define WRITE_OUT_6(X, ...) WRITE_ONE(X), WRITE_OUT_5(__VA_ARGS__)
+#define WRITE_OUT_7(X, ...) WRITE_ONE(X), WRITE_OUT_6(__VA_ARGS__)
+#define WRITE_OUT_8(X, ...) WRITE_ONE(X), WRITE_OUT_7(__VA_ARGS__)
+#define WRITE_OUT_9(X, ...) WRITE_ONE(X), WRITE_OUT_8(__VA_ARGS__)
+#define WRITE_OUT_10(X, ...) WRITE_ONE(X), WRITE_OUT_9(__VA_ARGS__)
+#define WRITE_OUT(...) MACRO_CAT(WRITE_OUT_, COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)
 
 DQLITE_VISIBLE_TO_TESTS DQLITE_NOINLINE
-void dqlite_print_crash_trace(void) {
-	_Static_assert(sizeof(trace_records) == sizeof(print_records), "Trace records size mismatch");
-
+void dqlite_print_crash_trace(int fd) {
 	uint64_t next_id = atomic_load(&trace_id_generator);
-	atomic_thread_fence(memory_order_acquire);
-	memcpy(print_records, trace_records, sizeof(trace_records));
 
 	/* Iterate over trace records in order of their IDs */
 	uint64_t n_records = DQLITE_MAX_CRASH_TRACE;
@@ -400,38 +413,37 @@ void dqlite_print_crash_trace(void) {
 		n_records = next_id;
 	}
 
-	struct trace_buffer trace_writer = {
-		.fd = STDERR_FILENO,
+	struct trace_buffer writer = {
+		.fd = fd,
 	};
 
-	WRITE_OUT(&trace_writer, "Tentatively showing last ", n_records, " crash trace records:\n");
+	WRITE_OUT("Tentatively showing last ", n_records, " crash trace records:\n");
 
 	for (uint64_t id = next_id - n_records; id < next_id; id++) {
 		size_t index = id % DQLITE_MAX_CRASH_TRACE;
 
-		struct trace_record *record = &print_records[index];
-		if (record->id != id) {
+		atomic_thread_fence(memory_order_acquire);
+		struct trace_record record = trace_records[index];
+
+		if (record.id != id) {
 			/* This record has not been written yet or is from a previous iteration */
 			continue;
 		}
-
 
 		/* Print a simplified header for crashes. 
 		 * Example:
 		 *   91205050700 001132 		uvClientSend  src/uv_send.c:218 append entries
 		 */
-		WRITE_OUT(&trace_writer, "\t ", record->ns, " ", record->tid,
-			  " ");
-		WRITE_OUT(&trace_writer,
-			  tracerShortFileName(record->trace_def->file), ":",
-			  record->trace_def->line, " ", record->trace_def->func,
+		WRITE_OUT("\t ", record.ns, " ", record.tid, " ");
+		WRITE_OUT(tracerShortFileName(record.trace_def->file), ":",
+			  record.trace_def->line, " ", record.trace_def->func,
 			  " \t");
 
 		/* Print the trace record */
-		const struct trace_def *def = record->trace_def;
-		dqlite_sigsafe_fprintf(&trace_writer, def->fmt, record->argv);
-		char_out(&trace_writer, '\n');
-		flush_out(&trace_writer);
+		const struct trace_def *def = record.trace_def;
+		dqlite_sigsafe_fprintf(&writer, def->fmt, record.argv);
+		char_out(&writer, '\n');
+		flush_out(&writer);
 	}
 }
 

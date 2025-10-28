@@ -562,7 +562,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 	bool pending_byte_page_reached =
 	    (page_size * d->n_pages == dq_sqlite_pending_byte);
 	if ((pgno > d->n_pages + 1) && !pending_byte_page_reached) {
-		tracef("page number greater than length (requested %d, last %d)",
+		tracef("page number greater than length (requested %u, last %u)",
 		       pgno, d->n_pages);
 		*page = NULL;
 		return SQLITE_IOERR_WRITE;
@@ -1872,7 +1872,7 @@ static void vfsFinalizeTransaction(struct vfsMainFile *f)
 		return;
 	}
 
-	tracef("rollback n_tx: %d", w->n_tx);
+	tracef("rollback n_tx: %u", w->n_tx);
 	for (unsigned i = 0; i < w->n_tx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
@@ -2540,7 +2540,7 @@ static int vfsOpenHook(sqlite3 *db,
 		sprintf(pragma, "PRAGMA page_size=%d", f->vfs->config->page_size);
 		rv = sqlite3_exec(db, pragma, NULL, NULL, &msg);
 		if (rv != SQLITE_OK) {
-			tracef("page_size=%d failed", f->vfs->config->page_size);
+			tracef("page_size=%u failed", f->vfs->config->page_size);
 			return rv;
 		}
 

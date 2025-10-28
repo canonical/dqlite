@@ -249,7 +249,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 
 	format = byteFlip64(header[0]);
 	if (format != UV__DISK_FORMAT) {
-		tracef("load %s: unsupported format %ju", info->filename,
+		tracef("load %s: unsupported format %" PRIu64, info->filename,
 		       format);
 		rv = RAFT_MALFORMED;
 		goto err_after_open;
@@ -618,7 +618,7 @@ int UvSnapshotPut(struct raft_io *io,
 
 	dqlite_assert(uv->snapshot_put_work.data == NULL);
 
-	tracef("put snapshot at %" PRIu64 ", keeping %d", snapshot->index, trailing);
+	tracef("put snapshot at %" PRIu64 ", keeping %u", snapshot->index, trailing);
 
 	put = RaftHeapMalloc(sizeof *put);
 	if (put == NULL) {
