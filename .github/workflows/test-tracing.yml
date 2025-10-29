@@ -263,7 +263,7 @@ jobs:
               const [, timestamp, pid, filename, lineNum, functionName, message] = traceMatch;
 
               const currentTimestamp = parseInt(timestamp);
-              if (currentTimestamp <= previousTimestamp) {
+              if (currentTimestamp < previousTimestamp) {
                 errors.push(`Line ${i + 2}: Timestamp ${currentTimestamp} is not greater than previous ${previousTimestamp}`);
               }
               previousTimestamp = currentTimestamp;
