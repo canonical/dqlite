@@ -153,6 +153,7 @@ void dqlite_crash_trace(const struct trace_def *trace_def,
 	record->trace_def = trace_def;
 	record->argc = argc;
 	memcpy(record->argv, argv, sizeof(struct trace_arg) * argc);
+	atomic_thread_fence(memory_order_release);
 
 	record->id = id;
 	atomic_thread_fence(memory_order_release);
