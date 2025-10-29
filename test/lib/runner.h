@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "../../src/tracing.h"
 #include "munit.h"
@@ -24,7 +25,7 @@ extern int _main_suites_n;
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 void dqlite_print_trace(int skip);
-void dqlite_print_crash_trace(void);
+void dqlite_print_crash_trace(int fd);
 #endif
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
@@ -38,12 +39,11 @@ void dqlite_print_crash_trace(void);
 		struct backtrace_state *state_;                          \
 		state_ = backtrace_create_state(NULL, SKIP, NULL, NULL); \
 		backtrace_print(state_, 0, stderr);                      \
-		dqlite_print_crash_trace();                                 \
+		dqlite_print_crash_trace(STDERR_FILENO);                 \
 	} while (0)
 
 #elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
 #include <execinfo.h>
-#include <unistd.h>
 
 #define PRINT_BACKTRACE(SKIP)                                             \
 	do {                                                              \
@@ -53,7 +53,7 @@ void dqlite_print_crash_trace(void);
 			backtrace_symbols_fd(buffer + SKIP, nptrs - SKIP, \
 					     STDERR_FILENO);              \
 		}                                                         \
-		dqlite_print_crash_trace();                                 \
+		dqlite_print_crash_trace(STDERR_FILENO);                  \
 	} while (0)
 
 #elif defined(HAVE_LIBUNWIND_H)
@@ -91,7 +91,7 @@ void dqlite_print_crash_trace(void);
 				fprintf(stderr, "??\n");                 \
 			}                                                \
 		}                                                        \
-		dqlite_print_crash_trace();                                 \
+		dqlite_print_crash_trace(STDERR_FILENO);                 \
 	} while (0)
 
 #else

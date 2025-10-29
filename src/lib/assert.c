@@ -1,8 +1,9 @@
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
 #include "assert.h"
+#include <unistd.h>
 
-void dqlite_print_crash_trace(void); // defined in tracing.c
+void dqlite_print_crash_trace(int fd); // defined in tracing.c
 void dqlite_print_trace(int skip);
 
 /* This is necessary as dqlite is using -Werror, but glibc defines __assert_fail
@@ -33,12 +34,11 @@ void dqlite_print_trace(int skip)
 	state_ = backtrace_create_state(NULL, skip, NULL, NULL);
 	backtrace_print(state_, 0, stderr);
 
-	dqlite_print_crash_trace();
+	dqlite_print_crash_trace(STDERR_FILENO);
 }
 
 #elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
 #include <execinfo.h>
-#include <unistd.h>
 
 void dqlite_print_trace(int skip)
 {
@@ -48,7 +48,7 @@ void dqlite_print_trace(int skip)
 		backtrace_symbols_fd(buffer + skip, nptrs - skip, STDERR_FILENO);
 	}
 
-	dqlite_print_crash_trace();
+	dqlite_print_crash_trace(STDERR_FILENO);
 }
 
 #elif defined(HAVE_LIBUNWIND_H)
@@ -85,7 +85,7 @@ void dqlite_print_trace(int skip)
 		}
 	}
 
-	dqlite_print_crash_trace();
+	dqlite_print_crash_trace(STDERR_FILENO);
 }
 
 #endif /* HAVE_EXECINFO_H */
