@@ -188,8 +188,8 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 	/* Start a new election round */
 	rv = electionStart(r);
 	if (rv != 0) {
-		r->state = RAFT_FOLLOWER;
-		raft_free(r->candidate_state.votes);
+		convertClear(r);
+		convertSetState(r, RAFT_FOLLOWER);
 		return rv;
 	}
 
