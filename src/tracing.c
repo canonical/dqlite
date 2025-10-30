@@ -112,7 +112,7 @@ void dqlite_tracef(const char *file, unsigned int line, const char *func, unsign
 	stderrTracerEmit(file, line, func, level, msg);
 }
 
-#define DQLITE_MAX_CRASH_TRACE 1024
+#define DQLITE_MAX_CRASH_TRACE 8192
 
 #include <stdatomic.h>
 
