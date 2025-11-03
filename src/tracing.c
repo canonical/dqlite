@@ -237,6 +237,11 @@ static void int_out(struct trace_buffer *writer, int64_t value)
 	if (value == 0) {
 		return char_out(writer, '0');
 	}
+	if (value == INT64_MIN) {
+		/* Handle INT64_MIN edge case */
+		str_out(writer, "9223372036854775808");
+		return;
+	}
 
 	if (value < 0) {
 		char_out(writer, '-');
