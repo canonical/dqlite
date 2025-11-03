@@ -117,7 +117,7 @@ void dqlite_tracef(const char *file, unsigned int line, const char *func, unsign
 #include <stdatomic.h>
 
 struct trace_record {
-	uint64_t id;
+	_Atomic(uint64_t) id;
 	uint64_t tid;
 	uint64_t ns;
 	const struct trace_def *trace_def;
@@ -145,17 +145,15 @@ void dqlite_crash_trace(const struct trace_def *trace_def,
 
 	struct trace_record *record = &trace_records[index];
 
-	record->id = UINT64_MAX; /* Mark as incomplete */
-	atomic_thread_fence(memory_order_release);
+	/* Mark as incomplete */
+	atomic_store_explicit(&record->id, UINT64_MAX, memory_order_relaxed);
 
 	record->tid = (uint64_t)tid;
 	record->ns = ns;
 	record->trace_def = trace_def;
 	record->argc = argc;
 	memcpy(record->argv, argv, sizeof(struct trace_arg) * argc);
-	atomic_thread_fence(memory_order_release);
-
-	record->id = id;
+	record->id = id; /* Mark as incomplete */
 	atomic_thread_fence(memory_order_release);
 }
 
@@ -424,12 +422,14 @@ void dqlite_print_crash_trace(int fd) {
 		size_t index = id % DQLITE_MAX_CRASH_TRACE;
 
 		atomic_thread_fence(memory_order_acquire);
-		struct trace_record record = trace_records[index];
-
+		struct trace_record record = {
+			.id = trace_records[index].id,
+		};
 		if (record.id != id) {
 			/* This record has not been written yet or is from a previous iteration */
 			continue;
 		}
+		record = trace_records[index];
 
 		/* Print a simplified header for crashes. 
 		 * Example:
