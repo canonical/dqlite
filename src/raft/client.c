@@ -121,13 +121,12 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	req->index++;
 	req->next = NULL;
 
-	/* TODO: use a completely empty buffer */
 	buf.len = 8;
 	buf.base = raft_malloc(buf.len);
-
 	if (buf.base == NULL) {
 		return RAFT_NOMEM;
 	}
+	memset(buf.base, 0, buf.len);
 
 	tracef("barrier starting at %lld", req->index);
 	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
