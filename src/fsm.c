@@ -181,71 +181,6 @@ int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
 	return 0;
 }
 
-// static int vfsWalRestore(struct vfsWal *w,
-// 			 const uint8_t *data,
-// 			 size_t n,
-// 			 uint32_t page_size)
-// {
-// 	struct vfsFrame **frames;
-// 	unsigned n_frames;
-// 	unsigned i;
-// 	size_t offset;
-// 	int rv;
-
-// 	if (n == 0) {
-// 		return 0;
-// 	}
-
-// 	assert(w->n_tx == 0);
-
-// 	assert(n > VFS__WAL_HEADER_SIZE);
-// 	assert(((n - (size_t)VFS__WAL_HEADER_SIZE) %
-// 		((size_t)vfsFrameSize(page_size))) == 0);
-
-// 	n_frames = (unsigned)((n - (size_t)VFS__WAL_HEADER_SIZE) /
-// 			      ((size_t)vfsFrameSize(page_size)));
-
-// 	frames = sqlite3_malloc64(sizeof *frames * n_frames);
-// 	if (frames == NULL) {
-// 		goto oom;
-// 	}
-
-// 	for (i = 0; i < n_frames; i++) {
-// 		struct vfsFrame *frame = vfsFrameCreate(page_size);
-// 		const uint8_t *p;
-
-// 		if (frame == NULL) {
-// 			unsigned j;
-// 			for (j = 0; j < i; j++) {
-// 				vfsFrameDestroy(frames[j]);
-// 			}
-// 			goto oom_after_frames_alloc;
-// 		}
-// 		frames[i] = frame;
-
-// 		offset = (size_t)VFS__WAL_HEADER_SIZE +
-// 			 ((size_t)i * (size_t)vfsFrameSize(page_size));
-// 		p = &data[offset];
-// 		memcpy(frame->header, p, VFS__FRAME_HEADER_SIZE);
-// 		memcpy(frame->page, p + VFS__FRAME_HEADER_SIZE, page_size);
-// 	}
-
-// 	memcpy(w->hdr, data, VFS__WAL_HEADER_SIZE);
-
-// 	rv = vfsWalTruncate(w, 0);
-// 	assert(rv == 0);
-
-// 	w->frames = frames;
-// 	w->n_frames = n_frames;
-
-// 	return 0;
-
-// oom_after_frames_alloc:
-// 	sqlite3_free(frames);
-// oom:
-// 	return DQLITE_NOMEM;
-// }
-
 static int decodeDatabase(const struct registry *r,
 			  struct cursor *cursor,
 			  struct vfsSnapshot *snapshot,
@@ -296,6 +231,8 @@ static int decodeDatabase(const struct registry *r,
 		    n_frames * wal_frame_size - wal_frame_size;
 
 		const size_t wal_page_count = ByteGetBe32(last_frame + 4);
+		dqlite_assert(wal_page_count != 0);
+
 		if (wal_page_count > page_count) {
 			void *wal_pages = raft_realloc(
 			    pages, sizeof(void *) * wal_page_count);
@@ -312,9 +249,10 @@ static int decodeDatabase(const struct registry *r,
 		     frame < wal + header.wal_size; frame += wal_frame_size) {
 			uint32_t page_number =
 			    ByteGetBe32((const uint8_t *)frame);
-			if (page_number > page_count) {
+			if (page_number >= page_count) {
 				continue;
 			}
+			dqlite_assert(page_number > 0);
 			pages[page_number - 1] =
 			    (void *)(frame + wal_frame_header_size);
 		}
