@@ -251,7 +251,7 @@ static void int_out(struct trace_buffer *writer, int64_t value)
 }
 
 /* This function is a reentrant and async-signal-safe version of printf, even if
- * it is powered down to implement only the `tracef` useful subset. As such:
+ * it is simplified to implement only the `tracef` useful subset. As such:
  * - it does not allocate memory
  * - it does not use locks
  * - it does not call functions that are not async-signal-safe
