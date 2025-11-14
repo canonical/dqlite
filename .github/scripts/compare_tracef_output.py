@@ -7,7 +7,6 @@ compared to check.txt reference output.
 import re
 import sys
 
-
 def validate_trace_output(check_lines, test_lines):
     """Validate the trace output format and content."""
     errors = []
@@ -85,7 +84,6 @@ def validate_trace_output(check_lines, test_lines):
         'message_count': message_count
     }
 
-
 def main():
     check_file = 'check.txt'
     test_file = 'test.txt'
@@ -116,7 +114,6 @@ def main():
     except Exception as e:
         print(f'Error: {e}', file=sys.stderr)
         sys.exit(1)
-
 
 if __name__ == '__main__':
     main()
