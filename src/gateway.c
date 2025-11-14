@@ -282,7 +282,7 @@ static int handle_leader(struct gateway *g, struct handle *req)
 	for (i = 0; i < g->raft->configuration.n; i++) {
 		struct raft_server *server = &g->raft->configuration.servers[i];
 		if (server->id == g->raft->id && server->role == RAFT_VOTER) {
-			tracef("handle leader - dispatch to %llu", server->id);
+			tracef("handle leader - dispatch to %" PRIu64, server->id);
 			raft_leader(g->raft, &id, &address);
 			break;
 		}
@@ -555,7 +555,7 @@ done:
 
 static int handle_exec(struct gateway *g, struct handle *req)
 {
-	tracef("handle exec schema:%" PRIu8, req->schema);
+	tracef("handle exec schema:%d", req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
 	struct request_exec request = { 0 };
@@ -641,7 +641,7 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
 {
-	tracef("handle exec sql schema:%" PRIu8, req->schema);
+	tracef("handle exec sql schema:%d", req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct request_exec_sql request = { 0 };
 	int rv;
@@ -807,7 +807,7 @@ done:
 
 static int handle_query(struct gateway *g, struct handle *req)
 {
-	tracef("handle query schema:%" PRIu8, req->schema);
+	tracef("handle query schema: %d", req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
 	struct request_query request = { 0 };
@@ -902,7 +902,7 @@ done:
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
 {
-	tracef("handle query sql schema:%" PRIu8, req->schema);
+	tracef("handle query sql schema:%d", req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct request_query_sql request = { 0 };
 	int rv;

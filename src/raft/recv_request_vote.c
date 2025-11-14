@@ -29,9 +29,8 @@ int recvRequestVote(struct raft *r,
 	dqlite_assert(args != NULL);
 
 	tracef(
-	    "self:%llu from:%llu@%s candidate_id:%llu disrupt_leader:%d "
-	    "last_log_index:%llu "
-	    "last_log_term:%llu pre_vote:%d term:%llu",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s candidate_id: %" PRIu64 " disrupt_leader: %d "
+	    "last_log_index: %" PRIu64 " last_log_term: %" PRIu64 " pre_vote: %d term: %" PRIu64,
 	    r->id, id, address, args->candidate_id, args->disrupt_leader,
 	    args->last_log_index, args->last_log_term, args->pre_vote,
 	    args->term);
@@ -104,7 +103,7 @@ int recvRequestVote(struct raft *r,
 	 * same as the request term (otherwise we would have rejected the
 	 * request or bumped our term). */
 	if (!args->pre_vote) {
-		tracef("no pre_vote: current_term:%llu term:%llu",
+		tracef("no pre_vote: current_term: %" PRIu64 " term: %" PRIu64,
 		       r->current_term, args->term);
 		dqlite_assert(r->current_term == args->term);
 	}

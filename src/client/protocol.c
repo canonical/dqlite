@@ -354,7 +354,7 @@ int clientSendHandshake(struct client_proto *c, struct client_context *context)
 
 	rv = doWrite(c->fd, &protocol, sizeof protocol, context);
 	if (rv < 0) {
-		tracef("client send handshake failed %zd", rv);
+		tracef("client send handshake failed %" PRId64, (int64_t)rv);
 		return DQLITE_CLIENT_PROTO_ERROR;
 	} else if ((size_t)rv < sizeof protocol) {
 		return DQLITE_CLIENT_PROTO_SHORT;
@@ -382,7 +382,7 @@ static int writeMessage(struct client_proto *c,
 	message__encode(&message, &cursor);
 	rv = doWrite(c->fd, buffer__cursor(&c->write, 0), n, context);
 	if (rv < 0) {
-		tracef("request write failed rv:%zd", rv);
+		tracef("request write failed rv: %" PRId64, (int64_t)rv);
 		return DQLITE_CLIENT_PROTO_ERROR;
 	} else if ((size_t)rv < n) {
 		return DQLITE_CLIENT_PROTO_SHORT;
@@ -447,7 +447,7 @@ static int readMessage(struct client_proto *c,
 	cursor.cap = n;
 	rv = message__decode(&cursor, &message);
 	if (rv != 0) {
-		tracef("message decode failed rv:%zd", rv);
+		tracef("message decode failed rv: %" PRId64, (int64_t)rv);
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 

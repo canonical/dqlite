@@ -34,8 +34,8 @@ int recvAppendEntries(struct raft *r,
 	dqlite_assert(args != NULL);
 	dqlite_assert(address != NULL);
 	tracef(
-	    "self:%llu from:%llu@%s leader_commit:%llu n_entries:%d "
-	    "prev_log_index:%llu prev_log_term:%llu, term:%llu",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s leader_commit: %" PRIu64 " n_entries: %u "
+	    "prev_log_index: %" PRIu64 " prev_log_term: %" PRIu64 ", term: %" PRIu64,
 	    r->id, id, address, args->leader_commit, args->n_entries,
 	    args->prev_log_index, args->prev_log_term, args->term);
 

@@ -35,8 +35,6 @@
 #define __builtin_assume_aligned(x, y) x
 #endif
 
-#define max(a, b) ((a) > (b) ? (a) : (b))
-
 /* Byte order */
 #if defined(DQLITE_LITTLE_ENDIAN)
 #define VFS__BIGENDIAN 0
@@ -562,7 +560,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 	bool pending_byte_page_reached =
 	    (page_size * d->n_pages == dq_sqlite_pending_byte);
 	if ((pgno > d->n_pages + 1) && !pending_byte_page_reached) {
-		tracef("page number greater than length (requested %d, last %d)",
+		tracef("page number greater than length (requested %u, last %u)",
 		       pgno, d->n_pages);
 		*page = NULL;
 		return SQLITE_IOERR_WRITE;
@@ -1872,7 +1870,7 @@ static void vfsFinalizeTransaction(struct vfsMainFile *f)
 		return;
 	}
 
-	tracef("rollback n_tx: %d", w->n_tx);
+	tracef("rollback n_tx: %u", w->n_tx);
 	for (unsigned i = 0; i < w->n_tx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
@@ -2540,7 +2538,7 @@ static int vfsOpenHook(sqlite3 *db,
 		sprintf(pragma, "PRAGMA page_size=%d", f->vfs->config->page_size);
 		rv = sqlite3_exec(db, pragma, NULL, NULL, &msg);
 		if (rv != SQLITE_OK) {
-			tracef("page_size=%d failed", f->vfs->config->page_size);
+			tracef("page_size=%u failed", f->vfs->config->page_size);
 			return rv;
 		}
 
@@ -2964,12 +2962,12 @@ static int vfsCheckpoint(sqlite3 *conn, struct vfsMainFile *f)
 {
 	PRE(f->sharedMask == 0);
 	PRE(f->exclMask == 0);
-	tracef("[database %p] checkpoint start", f->database);
+	tracef("[database %p] checkpoint start", (void*)f->database);
 
 	/* Try to lock everything, so that nothing can proceed. */
 	int rv = vfsShmLock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
 	if (rv != SQLITE_OK) {
-		tracef("[database %p] checkpoint busy", f->database);
+		tracef("[database %p] checkpoint busy", (void*)f->database);
 		return rv;
 	}
 	f->exclMask = VFS__CHECKPOINT_MASK;
@@ -2985,7 +2983,7 @@ static int vfsCheckpoint(sqlite3 *conn, struct vfsMainFile *f)
 	dqlite_assert(rv == SQLITE_OK);
 	dqlite_assert(wal_size == 0);
 	dqlite_assert(ckpt == 0);
-	tracef("[database %p] checkpointed");
+	tracef("[database %p] checkpointed", (void*)f->database);
 
 	f->exclMask = 0;
 	rv = vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
@@ -3161,7 +3159,7 @@ int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot)
 	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
 
-	tracef("restore %s of %zd pages", f->database->name, snapshot->page_count);
+	tracef("restore %s of %" PRIu64 " pages", f->database->name, (uint64_t)snapshot->page_count);
 
 	/* Lock the database. The locking scheme here is similar to the one used
 	 * when transitioning from WAL to DELETE mode. The WAL-Index recovery is

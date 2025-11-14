@@ -187,7 +187,7 @@ static int tickLeader(struct raft *r)
 		 * still taking too long, or if the server is unresponsive. */
 		if (is_too_slow || is_unresponsive) {
 			tracef(
-			    "server_index:%d is_too_slow:%d is_unresponsive:%d",
+			    "server_index:%u is_too_slow:%d is_unresponsive:%d",
 			    server_index, is_too_slow, is_unresponsive);
 			struct raft_change *change;
 

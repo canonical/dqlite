@@ -5,14 +5,6 @@
 #include "configuration.h"
 #include "log.h"
 
-#ifndef max
-#define max(a, b) ((a) < (b) ? (b) : (a))
-#endif
-
-#ifndef min
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
 /* Initialize a single progress object. */
 static void initProgress(struct raft_progress *p, raft_index last_index)
 {
@@ -258,7 +250,7 @@ bool progressMaybeDecrement(struct raft *r,
 	 * not match the next index minus one. */
 	if (rejected != p->next_index - 1) {
 		tracef(
-		    "rejected index %llu different from next index %lld -> "
+		    "rejected index %" PRIu64 " different from next index %" PRIu64 " -> "
 		    "ignore ",
 		    rejected, p->next_index);
 		return false;

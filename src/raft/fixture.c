@@ -1070,7 +1070,7 @@ static int serverInit(struct raft_fixture *f, unsigned i, struct raft_fsm *fsm)
 	f->servers[i] = s;
 	s->alive = true;
 	s->id = i + 1;
-	sprintf(s->address, "%llu", s->id);
+	sprintf(s->address, "%" PRIu64, s->id);
 	rv = ioInit(&s->io, i, &f->time);
 	if (rv != 0) {
 		return rv;
@@ -1268,8 +1268,8 @@ static bool updateLeaderAndCheckElectionSafety(struct raft_fixture *f)
 
 			if (other->current_term == raft->current_term) {
 				fprintf(stderr,
-					"server %llu and %llu are both leaders "
-					"in term %llu",
+					"server %" PRIu64 " and %" PRIu64 " are both leaders "
+					"in term %" PRIu64,
 					raft->id, other->id,
 					raft->current_term);
 				abort();

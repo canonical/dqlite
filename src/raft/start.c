@@ -166,13 +166,13 @@ int raft_start(struct raft *r)
 	}
 	dqlite_assert(start_index >= 1);
 	tracef(
-	    "current_term:%llu voted_for:%llu start_index:%llu n_entries:%zu",
-	    r->current_term, r->voted_for, start_index, n_entries);
+	    "current_term: %" PRIu64 " voted_for: %" PRIu64 " start_index: %" PRIu64 " n_entries: %" PRIu64,
+	    r->current_term, r->voted_for, start_index, (uint64_t)n_entries);
 
 	/* If we have a snapshot, let's restore it. */
 	if (snapshot != NULL) {
 		tracef(
-		    "restore snapshot with last index %llu and last term %llu",
+		    "restore snapshot with last index %" PRIu64 " and last term %" PRIu64,
 		    snapshot->index, snapshot->term);
 		rv = snapshotRestore(r, snapshot);
 		if (rv != 0) {
@@ -197,7 +197,7 @@ int raft_start(struct raft *r)
 
 	/* Append the entries to the log, possibly restoring the last
 	 * configuration. */
-	tracef("restore %zu entries starting at %llu", n_entries, start_index);
+	tracef("restore %" PRIu64 " entries starting at %" PRIu64, (uint64_t)n_entries, start_index);
 	rv = restoreEntries(r, snapshot_index, snapshot_term, start_index,
 			    entries, n_entries);
 	if (rv != 0) {

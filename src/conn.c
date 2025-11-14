@@ -11,7 +11,7 @@
 #include "transport.h"
 #include "utils.h"
 
-#define conn_trace(C, fmt, ...) tracef("[conn %p] "fmt, C, ##__VA_ARGS__)
+#define conn_trace(C, fmt, ...) tracef("[conn %p] "fmt, (void*)C, ##__VA_ARGS__)
 
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)

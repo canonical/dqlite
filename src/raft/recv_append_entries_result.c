@@ -20,8 +20,8 @@ int recvAppendEntriesResult(struct raft *r,
 	dqlite_assert(result != NULL);
 
 	tracef(
-	    "self:%llu from:%llu@%s last_log_index:%llu rejected:%llu "
-	    "term:%llu",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s last_log_index: %" PRIu64 " rejected: %" PRIu64 " "
+	    "term: %" PRIu64,
 	    r->id, id, address, result->last_log_index, result->rejected,
 	    result->term);
 

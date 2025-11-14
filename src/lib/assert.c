@@ -1,8 +1,8 @@
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
 #include "assert.h"
-
-void dqlite_print_trace(int skip);
+#include "../tracing.h"
+#include <unistd.h>
 
 /* This is necessary as dqlite is using -Werror, but glibc defines __assert_fail
  * with an unsigned __line argument while musl with an int. On one of them there
@@ -31,11 +31,12 @@ void dqlite_print_trace(int skip)
 	struct backtrace_state *state_;
 	state_ = backtrace_create_state(NULL, skip, NULL, NULL);
 	backtrace_print(state_, 0, stderr);
+
+	dqlite_print_crash_trace(STDERR_FILENO);
 }
 
 #elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
 #include <execinfo.h>
-#include <unistd.h>
 
 void dqlite_print_trace(int skip)
 {
@@ -44,6 +45,8 @@ void dqlite_print_trace(int skip)
 	if (nptrs > skip) {
 		backtrace_symbols_fd(buffer + skip, nptrs - skip, STDERR_FILENO);
 	}
+
+	dqlite_print_crash_trace(STDERR_FILENO);
 }
 
 #elif defined(HAVE_LIBUNWIND_H)
@@ -79,6 +82,8 @@ void dqlite_print_trace(int skip)
 			fprintf(stderr, "??\n");
 		}
 	}
+
+	dqlite_print_crash_trace(STDERR_FILENO);
 }
 
 #endif /* HAVE_EXECINFO_H */

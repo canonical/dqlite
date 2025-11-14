@@ -77,7 +77,7 @@ static void connect_work_cb(uv_work_t *work)
 	 * function. */
 	rv = i->connect.f(i->connect.arg, r->address, &r->fd);
 	if (rv != 0) {
-		tracef("connect failed to %llu@%s", r->id, r->address);
+		tracef("connect failed to %" PRIu64 "@%s", r->id, r->address);
 		rv = RAFT_NOCONNECTION;
 		goto err;
 	}
@@ -166,7 +166,7 @@ static int impl_connect(struct raft_uv_transport *transport,
 			const char *address,
 			raft_uv_connect_cb cb)
 {
-	tracef("impl connect id:%llu address:%s", id, address);
+	tracef("impl connect id:%" PRIu64 " address:%s", id, address);
 	struct impl *i = transport->impl;
 	struct connect *r;
 	int rv;

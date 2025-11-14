@@ -20,14 +20,6 @@
 # include "error.h"
 #endif
 
-#ifndef max
-#define max(a, b) ((a) < (b) ? (b) : (a))
-#endif
-
-#ifndef min
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
 /* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
  * raft_io_>send(). */
 struct sendAppendEntries
@@ -50,7 +42,7 @@ static void sendAppendEntriesCb(struct raft_io_send *send, const int status)
 	if (r->state == RAFT_LEADER && i < r->configuration.n) {
 		if (status != 0) {
 			tracef(
-			    "failed to send append entries to server %llu: %s",
+			    "failed to send append entries to server %" PRIu64 ": %s",
 			    req->server_id, raft_strerror(status));
 			/* Go back to probe mode. */
 			progressToProbe(r, i);
@@ -98,7 +90,7 @@ static int sendAppendEntries(struct raft *r,
 	args->leader_commit = r->commit_index;
 
 	tracef(
-	    "send %u entries starting at %llu to server %llu (last index %llu)",
+	    "send %u entries starting at %" PRIu64 " to server %" PRIu64 " (last index %" PRIu64 ")",
 	    args->n_entries, args->prev_log_index, server->id,
 	    logLastIndex(r->log));
 
@@ -226,7 +218,7 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
 	req->snapshot = snapshot;
 	req->send.data = req;
 
-	tracef("sending snapshot with last index %llu to %llu", snapshot->index,
+	tracef("sending snapshot with last index %" PRIu64 " to %" PRIu64, snapshot->index,
 	       server->id);
 
 	rv = r->io->send(r->io, &req->send, &message, sendInstallSnapshotCb);
@@ -339,7 +331,7 @@ int replicationProgress(struct raft *r, unsigned i)
 		 * snapshot if we're not doing so already. */
 		if (prev_term == 0 && !progress_state_is_snapshot) {
 			dqlite_assert(prev_index < snapshot_index);
-			tracef("missing entry at index %lld -> send snapshot",
+			tracef("missing entry at index %" PRIu64 " -> send snapshot",
 			       prev_index);
 			goto send_snapshot;
 		}
@@ -393,7 +385,7 @@ static int triggerAll(struct raft *r)
 		if (rv != 0 && rv != RAFT_NOCONNECTION) {
 			/* This is not a critical failure, let's just log it. */
 			tracef(
-			    "failed to send append entries to server %llu: %s "
+			    "failed to send append entries to server %" PRIu64 ": %s "
 			    "(%d)",
 			    server->id, raft_strerror(rv), rv);
 		}
@@ -484,7 +476,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 	raft_index index;
 	int rv;
 
-	tracef("leader: written %u entries starting at %lld: status %d",
+	tracef("leader: written %u entries starting at %" PRIu64 ": status %d",
 	       request->n, request->index, status);
 
 	/* In case of a failed disk write, if we were the leader creating these
@@ -500,7 +492,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 			struct request *req =
 			    getRequest(r, request->index + i, -1);
 			if (!req) {
-				tracef("no request found at index %llu",
+				tracef("no request found at index %" PRIu64,
 				       request->index + i);
 				continue;
 			}
@@ -616,8 +608,8 @@ static int appendLeader(struct raft *r, raft_index index)
 	 * some entries to write. */
 	if (n == 0) {
 		dqlite_assert(false);
-		tracef("No log entries found at index %llu", index);
-		ErrMsgPrintf(r->errmsg, "No log entries found at index %llu",
+		tracef("No log entries found at index %" PRIu64, index);
+		ErrMsgPrintf(r->errmsg, "No log entries found at index %" PRIu64,
 			     index);
 		rv = RAFT_SHUTDOWN;
 		goto err_after_entries_acquired;
@@ -764,7 +756,7 @@ int replicationUpdate(struct raft *r,
 					       result->last_log_index);
 		if (retry) {
 			/* Retry, ignoring errors. */
-			tracef("log mismatch -> send old entries to %llu",
+			tracef("log mismatch -> send old entries to %" PRIu64,
 			       server->id);
 			replicationProgress(r, i);
 		}
@@ -1069,7 +1061,7 @@ static int checkLogMatchingProperty(struct raft *r,
 
 	local_prev_term = logTermOf(r->log, args->prev_log_index);
 	if (local_prev_term == 0) {
-		tracef("no entry at index %llu -> reject",
+		tracef("no entry at index %" PRIu64 " -> reject",
 		       args->prev_log_index);
 		return 1;
 	}
@@ -1078,9 +1070,8 @@ static int checkLogMatchingProperty(struct raft *r,
 		if (args->prev_log_index <= r->commit_index) {
 			/* Should never happen; something is seriously wrong! */
 			tracef(
-			    "conflicting terms %llu and %llu for entry %llu "
-			    "(commit "
-			    "index %llu) -> shutdown",
+			    "conflicting terms %" PRIu64 " and %" PRIu64 " for entry %" PRIu64
+			    " (commit index %" PRIu64 ") -> shutdown",
 			    local_prev_term, args->prev_log_term,
 			    args->prev_log_index, r->commit_index);
 			return -1;
@@ -1128,7 +1119,7 @@ static int deleteConflictingEntries(struct raft *r,
 				return RAFT_SHUTDOWN;
 			}
 
-			tracef("log mismatch -> truncate (%llu)", entry_index);
+			tracef("log mismatch -> truncate (%" PRIu64 ")", entry_index);
 
 			/* Possibly discard uncommitted configuration changes.
 			 */
@@ -1328,8 +1319,8 @@ int replicationAppend(struct raft *r,
 
 	dqlite_assert(request->args.n_entries == n);
 	if (request->args.n_entries == 0) {
-		tracef("No log entries found at index %llu", request->index);
-		ErrMsgPrintf(r->errmsg, "No log entries found at index %llu",
+		tracef("No log entries found at index %" PRIu64, request->index);
+		ErrMsgPrintf(r->errmsg, "No log entries found at index %" PRIu64,
 			     request->index);
 		rv = RAFT_SHUTDOWN;
 		goto err_after_acquire_entries;
@@ -1422,7 +1413,7 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
 	}
 
 	if (status != 0) {
-		tracef("save snapshot %llu: %s", snapshot->index,
+		tracef("save snapshot %" PRIu64 ": %s", snapshot->index,
 		       raft_strerror(status));
 		goto discard;
 	}
@@ -1435,12 +1426,12 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
 	 */
 	rv = snapshotRestore(r, snapshot);
 	if (rv != 0) {
-		tracef("restore snapshot %llu: %s", snapshot->index,
+		tracef("restore snapshot %" PRIu64 ": %s", snapshot->index,
 		       raft_strerror(status));
 		goto discard;
 	}
 
-	tracef("restored snapshot with last index %llu", snapshot->index);
+	tracef("restored snapshot with last index %" PRIu64, snapshot->index);
 
 	goto respond;
 
@@ -1613,7 +1604,7 @@ static void applyChange(struct raft *r, const raft_index index)
 	 * uncommitted index, since that uncommitted configuration is now
 	 * committed. */
 	if (r->configuration_uncommitted_index == index) {
-		tracef("configuration at index:%llu is committed.", index);
+		tracef("configuration at index: %" PRIu64 " is committed.", index);
 		r->configuration_uncommitted_index = 0;
 	}
 
@@ -1742,7 +1733,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
 	snapshot = &r->snapshot.pending;
 
 	if (status != 0) {
-		tracef("snapshot %lld at term %lld: %s", snapshot->index,
+		tracef("snapshot %" PRIu64 " at term %" PRIu64 ": %s", snapshot->index,
 		       snapshot->term, raft_strerror(status));
 		goto out;
 	}
@@ -1809,7 +1800,7 @@ static void takeSnapshotDoneCb(struct raft_io_async_work *take, int status)
 static int takeSnapshotAsync(struct raft_io_async_work *take)
 {
 	struct raft *r = take->data;
-	tracef("take snapshot async at %lld", r->snapshot.pending.index);
+	tracef("take snapshot async at %" PRIu64, r->snapshot.pending.index);
 	struct raft_snapshot *snapshot = &r->snapshot.pending;
 	return r->fsm->snapshot_async(r->fsm, &snapshot->bufs,
 				      &snapshot->n_bufs);
@@ -1820,7 +1811,7 @@ static int takeSnapshot(struct raft *r)
 	struct raft_snapshot *snapshot;
 	int rv;
 
-	tracef("take snapshot at %lld", r->last_applied);
+	tracef("take snapshot at %" PRIu64, r->last_applied);
 
 	snapshot = &r->snapshot.pending;
 	snapshot->index = r->last_applied;
@@ -1889,7 +1880,7 @@ int replicationApply(struct raft *r)
 		return 0;
 	}
 
-	tracef("Apply indexed %d...%d", r->last_applied, r->commit_index);
+	tracef("Apply indexed %" PRIu64 "...%" PRIu64, (uint64_t)r->last_applied, (uint64_t)r->commit_index);
 	for (index = r->last_applied + 1; index <= r->commit_index; index++) {
 		const struct raft_entry *entry = logGet(r->log, index);
 		if (entry == NULL) {
@@ -1986,7 +1977,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 
 	if (votes > configurationVoterCount(&r->configuration) / 2) {
 		r->commit_index = index;
-		tracef("new commit index %llu", r->commit_index);
+		tracef("new commit index %" PRIu64, r->commit_index);
 	}
 
 	return;

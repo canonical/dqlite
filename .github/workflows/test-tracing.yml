@@ -1,0 +1,43 @@
+name: CI Tracef Tests
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  test-tracef:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y libuv1-dev python3
+
+    - name: Generate tracef test
+      shell: bash
+      run: |
+        python3 .github/scripts/generate_tracef_test.py
+
+    - name: Build tracef test
+      shell: bash
+      run: |
+        clang -g -O0 debug_trace_generated.c -o debug_trace_test
+
+    - name: Run tracef test
+      shell: bash
+      run: |
+        ./debug_trace_test
+
+    - name: Compare tracef output
+      shell: bash
+      run: |
+        python3 .github/scripts/compare_tracef_output.py

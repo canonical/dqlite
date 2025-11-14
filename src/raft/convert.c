@@ -20,7 +20,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 	 * respect to the paper we have an additional "unavailable" state, which
 	 * is the initial or final state. */
 	unsigned short old_state = r->state;
-	tracef("old_state:%u new_state:%u", old_state, new_state);
+	tracef("old_state: %u new_state: %u", (unsigned int)old_state, (unsigned int)new_state);
 	dqlite_assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
 	       (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
 	       (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
@@ -206,7 +206,7 @@ int convertToLeader(struct raft *r)
 {
 	int rv;
 
-	tracef("become leader for term %llu", r->current_term);
+	tracef("become leader for term %" PRIu64, r->current_term);
 
 	convertClear(r);
 	convertSetState(r, RAFT_LEADER);
@@ -235,7 +235,7 @@ int convertToLeader(struct raft *r)
 	 * committed if we are the only voter around. */
 	size_t n_voters = configurationVoterCount(&r->configuration);
 	if (n_voters == 1 && (r->last_stored > r->commit_index)) {
-		tracef("apply log entries after self election %llu %llu",
+		tracef("apply log entries after self election %" PRIu64 " %" PRIu64,
 		       r->last_stored, r->commit_index);
 		r->commit_index = r->last_stored;
 		rv = replicationApply(r);

@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "../../src/tracing.h"
 #include "munit.h"
@@ -23,10 +24,6 @@ extern int _main_suites_n;
 #define TEST__CAP SUITE__CAP
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
-void dqlite_print_trace(int skip);
-#endif
-
-#ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
 #if defined(HAVE_BACKTRACE_H)
 #include <backtrace.h>
@@ -37,11 +34,11 @@ void dqlite_print_trace(int skip);
 		struct backtrace_state *state_;                          \
 		state_ = backtrace_create_state(NULL, SKIP, NULL, NULL); \
 		backtrace_print(state_, 0, stderr);                      \
+		dqlite_print_crash_trace(STDERR_FILENO);                 \
 	} while (0)
 
 #elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
 #include <execinfo.h>
-#include <unistd.h>
 
 #define PRINT_BACKTRACE(SKIP)                                             \
 	do {                                                              \
@@ -51,6 +48,7 @@ void dqlite_print_trace(int skip);
 			backtrace_symbols_fd(buffer + SKIP, nptrs - SKIP, \
 					     STDERR_FILENO);              \
 		}                                                         \
+		dqlite_print_crash_trace(STDERR_FILENO);                  \
 	} while (0)
 
 #elif defined(HAVE_LIBUNWIND_H)
@@ -88,6 +86,7 @@ void dqlite_print_trace(int skip);
 				fprintf(stderr, "??\n");                 \
 			}                                                \
 		}                                                        \
+		dqlite_print_crash_trace(STDERR_FILENO);                 \
 	} while (0)
 
 #else
@@ -116,7 +115,14 @@ void dqlite_print_trace(int skip);
 	static void print_backtrace(int sig)                                  \
 	{                                                                     \
 		(void)sig;                                                    \
-		PRINT_BACKTRACE(3);                                           \
+		/* Prevent recursive printing of backtrace in case printing   \
+		 * raises a signal (because of a bug?) */                     \
+		static bool printing = false;                                 \
+		if (!printing) {                                              \
+			printing = true;                                      \
+			PRINT_BACKTRACE(3);                                   \
+			printing = false;                                     \
+		}                                                             \
 	}                                                                     \
                                                                               \
 	MunitSuite _main_suites[SUITE__CAP];                                  \
