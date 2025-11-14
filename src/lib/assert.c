@@ -1,10 +1,8 @@
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
 #include "assert.h"
+#include "../tracing.h"
 #include <unistd.h>
-
-void dqlite_print_crash_trace(int fd); // defined in tracing.c
-void dqlite_print_trace(int skip);
 
 /* This is necessary as dqlite is using -Werror, but glibc defines __assert_fail
  * with an unsigned __line argument while musl with an int. On one of them there

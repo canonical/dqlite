@@ -47,6 +47,9 @@ enum dqlite_trace_level {
 
 /* Enable tracing if the appropriate env variable is set, or disable tracing. */
 DQLITE_VISIBLE_TO_TESTS void dqliteTracingMaybeEnable(bool enabled);
+DQLITE_VISIBLE_TO_TESTS DQLITE_NOINLINE void dqlite_print_crash_trace(int fd);
+DQLITE_VISIBLE_TO_TESTS DQLITE_NOINLINE void dqlite_print_trace(int skip);
+
 
 struct trace_def {
 	const char *file;

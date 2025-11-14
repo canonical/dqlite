@@ -20,14 +20,6 @@
 # include "error.h"
 #endif
 
-#ifndef max
-#define max(a, b) ((a) < (b) ? (b) : (a))
-#endif
-
-#ifndef min
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
 /* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
  * raft_io_>send(). */
 struct sendAppendEntries

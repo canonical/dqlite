@@ -1,16 +1,27 @@
+/*
+ * This implementation stores trace messages in a fixed-size circular buffer
+ * that can be dumped via dqlite_print_crash_trace() for debugging purposes.
+ *		
+ * IMPORTANT: This circular buffer is NOT resilient to process crashes or
+ * failures. The buffer exists only in volatile memory and will be lost if
+ * the process terminates abnormally. In theory it is still possible to call
+ * dqlite_print_crash_trace() from a signal handler in order to dump the trace
+ * buffer before exiting, but for now this is not implemented.
+ */
 #include <stdatomic.h>
-#include <stdio.h> /* stderr */
 #include <stdint.h>
+#include <stdio.h> /* stderr */
 #include <stdlib.h>
 #include <string.h>      /* strstr, strlen */
 #include <sys/syscall.h> /* syscall */
 #include <sys/types.h>
-#include <unistd.h>      /* syscall, getpid */
+#include <unistd.h> /* syscall, getpid */
 
-#include "tracing.h"
 #include "lib/assert.h"
-#include "lib/byte.h"    /* ARRAY_SIZE */
+#include "lib/byte.h" /* ARRAY_SIZE */
+#include "tracing.h"
 
+#define DQLITE_MAX_CRASH_TRACE 8192
 #define LIBDQLITE_TRACE "LIBDQLITE_TRACE"
 
 bool _dqliteTracingEnabled = false;
@@ -43,7 +54,7 @@ static inline const char *tracerShortFileName(const char *fname)
 static inline const char *tracerTraceLevelName(unsigned int level)
 {
 	static const char *levels[] = {
-	    "NONE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL",
+		"NONE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL",
 	};
 
 	return level < ARRAY_SIZE(levels) ? levels[level] : levels[0];
@@ -65,10 +76,9 @@ static inline void tracerEmit(const char *file,
 			      unsigned int level,
 			      const char *message)
 {
-	struct timespec ts = {0};
+	struct timespec ts = { 0 };
 	struct tm tm;
 	pid_t tid = gettidImpl();
-
 
 	clock_gettime(CLOCK_REALTIME, &ts);
 	gmtime_r(&ts.tv_sec, &tm);
@@ -102,7 +112,12 @@ void stderrTracerEmit(const char *file,
 		tracerEmit(file, line, func, level, message);
 }
 
-void dqlite_tracef(const char *file, unsigned int line, const char *func, unsigned int level, const char *fmt, ...)
+void dqlite_tracef(const char *file,
+		   unsigned int line,
+		   const char *func,
+		   unsigned int level,
+		   const char *fmt,
+		   ...)
 {
 	va_list args;
 	char msg[1024];
@@ -112,12 +127,9 @@ void dqlite_tracef(const char *file, unsigned int line, const char *func, unsign
 	stderrTracerEmit(file, line, func, level, msg);
 }
 
-#define DQLITE_MAX_CRASH_TRACE 8192
-
-#include <stdatomic.h>
 
 struct trace_record {
-	_Atomic(uint64_t) id;
+	_Atomic(uint32_t) id;
 	uint64_t tid;
 	uint64_t ns;
 	const struct trace_def *trace_def;
@@ -125,7 +137,7 @@ struct trace_record {
 	struct trace_arg argv[TRACE_MAX_ARGS];
 };
 
-static atomic_size_t trace_id_generator = 0;
+static _Atomic(uint32_t) trace_id_generator = 0;
 static struct trace_record trace_records[DQLITE_MAX_CRASH_TRACE];
 
 void dqlite_crash_trace(const struct trace_def *trace_def,
@@ -140,21 +152,22 @@ void dqlite_crash_trace(const struct trace_def *trace_def,
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ns = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 
-	size_t id = atomic_fetch_add(&trace_id_generator, 1);
-	size_t index = id % DQLITE_MAX_CRASH_TRACE;
+	uint32_t id = atomic_fetch_add(&trace_id_generator, 1);
+	uint32_t index = id % DQLITE_MAX_CRASH_TRACE;
 
 	struct trace_record *record = &trace_records[index];
 
 	/* Mark as incomplete */
-	atomic_store_explicit(&record->id, UINT64_MAX, memory_order_relaxed);
+	atomic_store_explicit(&record->id, UINT32_MAX, memory_order_relaxed);
+	atomic_thread_fence(memory_order_release);
 
 	record->tid = (uint64_t)tid;
 	record->ns = ns;
 	record->trace_def = trace_def;
 	record->argc = argc;
 	memcpy(record->argv, argv, sizeof(struct trace_arg) * argc);
-	record->id = id; /* Mark as incomplete */
-	atomic_thread_fence(memory_order_release);
+	atomic_store_explicit(&record->id, id,
+			      memory_order_release); /* Mark as complete */
 }
 
 struct trace_buffer {
@@ -169,7 +182,8 @@ struct trace_buffer {
 static void char_out(struct trace_buffer *writer, char c)
 {
 	if (writer->pos < sizeof(writer->buf)) {
-		writer->buf[writer->pos++] = c;
+		writer->buf[writer->pos] = c;
+		writer->pos++;
 	} else {
 		write(writer->fd, writer->buf, writer->pos);
 		writer->buf[0] = c;
@@ -180,7 +194,8 @@ static void char_out(struct trace_buffer *writer, char c)
 static void str_out(struct trace_buffer *writer, const char *str)
 {
 	while (*str != '\0') {
-		char_out(writer, *str++);
+		char_out(writer, *str);
+		str++;
 	}
 }
 
@@ -193,9 +208,10 @@ static void uint_out(struct trace_buffer *writer, uint64_t value)
 
 	char temp[32]; /* Enough for 64-bit numbers */
 	size_t i = 0;
-	while (value > 0 && i < sizeof(temp) - 1) {
-		temp[i++] = (char)('0' + (value % 10));
+	while (value > 0 && i < sizeof(temp)) {
+		temp[i] = (char)('0' + (value % 10));
 		value /= 10;
+		i++;
 	}
 
 	while (i --> 0) {
@@ -210,7 +226,8 @@ static void ptr_out(struct trace_buffer *writer, const void *ptr)
 
 	bool leading_zero = true;
 	for (size_t i = 0; i < sizeof(uintptr_t) * 2; i++) {
-		uint8_t nibble = (value >> ((sizeof(uintptr_t) * 2 - 1 - i) * 4)) & 0xF;
+		uint8_t nibble =
+		    (value >> ((sizeof(uintptr_t) * 2 - 1 - i) * 4)) & 0xF;
 		if (nibble == 0 && leading_zero) {
 			continue;
 		}
@@ -239,7 +256,7 @@ static void int_out(struct trace_buffer *writer, int64_t value)
 	}
 	if (value == INT64_MIN) {
 		/* Handle INT64_MIN edge case */
-		str_out(writer, "9223372036854775808");
+		str_out(writer, "-9223372036854775808");
 		return;
 	}
 
@@ -259,14 +276,16 @@ static void int_out(struct trace_buffer *writer, int64_t value)
  * - it only supports integers and strings
  * - it does not support modifiers (like width, precision, etc)
  */
-static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt, const struct trace_arg *argv)
+static void dqlite_sigsafe_fprintf(struct trace_buffer *writer,
+				   const char *fmt,
+				   const struct trace_arg *argv)
 {
 	const char *p = fmt;
 	size_t arg_index = 0;
 	while (*p != '\0') {
 		if (*p == '%' && *(p + 1) != '\0') {
 			p++; /* Skip '%' */
-			
+
 			if (*p == '%') {
 				/* Literal '%' */
 				char_out(writer, '%');
@@ -276,97 +295,124 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 
 			const struct trace_arg *arg = &argv[arg_index];
 			switch (arg->type) {
-			case TRACE_ARG_PTR:
-				if (!(*p == 'p')) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+				case TRACE_ARG_PTR:
+					if (!(*p == 'p')) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				ptr_out(writer, arg->value.ptr);
-				break;
-			case TRACE_ARG_I8:
-				if (!(strncmp(p, PRId8, sizeof(PRId8)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					ptr_out(writer, arg->value.ptr);
+					break;
+				case TRACE_ARG_I8:
+					if (!(strncmp(p, PRId8,
+						      sizeof(PRId8) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				int_out(writer, arg->value.i8);
-				p += strlen(PRId8) - 1;
-				break;
-			case TRACE_ARG_U8:
-				if (!(strncmp(p, PRIu8, sizeof(PRIu8)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					int_out(writer, arg->value.i8);
+					p += strlen(PRId8) - 1;
+					break;
+				case TRACE_ARG_U8:
+					if (!(strncmp(p, PRIu8,
+						      sizeof(PRIu8) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				uint_out(writer, arg->value.u8);
-				p += strlen(PRIu8) - 1;
-				break;
-			case TRACE_ARG_I16:
-				if (!(strncmp(p, PRId16, sizeof(PRId16)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					uint_out(writer, arg->value.u8);
+					p += strlen(PRIu8) - 1;
+					break;
+				case TRACE_ARG_I16:
+					if (!(strncmp(p, PRId16,
+						      sizeof(PRId16) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				int_out(writer, arg->value.i16);
-				p += strlen(PRId16) - 1;
-				break;
-			case TRACE_ARG_U16:
-				if (!(strncmp(p, PRIu16, sizeof(PRIu16)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					int_out(writer, arg->value.i16);
+					p += strlen(PRId16) - 1;
+					break;
+				case TRACE_ARG_U16:
+					if (!(strncmp(p, PRIu16,
+						      sizeof(PRIu16) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				uint_out(writer, arg->value.u16);
-				p += strlen(PRIu16) - 1;
-				break;
-			case TRACE_ARG_I32:
-				if (!(strncmp(p, PRId32, sizeof(PRId32)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					uint_out(writer, arg->value.u16);
+					p += strlen(PRIu16) - 1;
+					break;
+				case TRACE_ARG_I32:
+					if (!(strncmp(p, PRId32,
+						      sizeof(PRId32) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				int_out(writer, arg->value.i32);
-				p += strlen(PRId32) - 1;
-				break;
-			case TRACE_ARG_U32:
-				if (!(strncmp(p, PRIu32, sizeof(PRIu32)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					int_out(writer, arg->value.i32);
+					p += strlen(PRId32) - 1;
+					break;
+				case TRACE_ARG_U32:
+					if (!(strncmp(p, PRIu32,
+						      sizeof(PRIu32) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				uint_out(writer, arg->value.u32);
-				p += strlen(PRIu32) - 1;
-				break;
-			case TRACE_ARG_I64:
-				if (!(strncmp(p, PRId64, sizeof(PRId64)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					uint_out(writer, arg->value.u32);
+					p += strlen(PRIu32) - 1;
+					break;
+				case TRACE_ARG_I64:
+					if (!(strncmp(p, PRId64,
+						      sizeof(PRId64) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				int_out(writer, arg->value.i64);
-				p += strlen(PRId64) - 1;
-				break;
-			case TRACE_ARG_U64:
-				if (!(strncmp(p, PRIu64, sizeof(PRIu64)-1) == 0)) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					int_out(writer, arg->value.i64);
+					p += strlen(PRId64) - 1;
+					break;
+				case TRACE_ARG_U64:
+					if (!(strncmp(p, PRIu64,
+						      sizeof(PRIu64) - 1) ==
+					      0)) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				uint_out(writer, arg->value.u64);
-				p += strlen(PRIu64) - 1;
-				break;
-			case TRACE_ARG_STR:
-				if (!(*p == 's')) {
-					str_out(writer, "<formatting error>");
-					return;
-				}
+					uint_out(writer, arg->value.u64);
+					p += strlen(PRIu64) - 1;
+					break;
+				case TRACE_ARG_STR:
+					if (!(*p == 's')) {
+						str_out(writer,
+							"<formatting error>");
+						return;
+					}
 
-				str_out(writer, arg->value.str);
-				break;
-			default:
-				str_out(writer, "<unsupported arg type>");
-				return;
+					str_out(writer, arg->value.str);
+					break;
+				default:
+					str_out(writer,
+						"<unsupported arg type>");
+					return;
 			}
 			arg_index++;
 		} else {
@@ -377,20 +423,19 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 	}
 }
 
-#define WRITE_ONE(X)                          \
-	_Generic((X),                         \
-	    bool: uint_out,              \
-	    int8_t: int_out,            \
-	    uint8_t: uint_out,           \
-	    int16_t: int_out,          \
-	    uint16_t: uint_out,         \
-	    int32_t: int_out,          \
-	    uint32_t: uint_out,         \
-	    int64_t: int_out,          \
-	    uint64_t: uint_out,         \
-	    const char *: str_out,  \
-	    char *: str_out  \
-	)(&writer, (X))
+#define WRITE_ONE(X)               \
+	_Generic((X),              \
+	    bool: uint_out,        \
+	    int8_t: int_out,       \
+	    uint8_t: uint_out,     \
+	    int16_t: int_out,      \
+	    uint16_t: uint_out,    \
+	    int32_t: int_out,      \
+	    uint32_t: uint_out,    \
+	    int64_t: int_out,      \
+	    uint64_t: uint_out,    \
+	    const char *: str_out, \
+	    char *: str_out)(&writer, (X))
 
 #define WRITE_OUT_0()
 #define WRITE_OUT_1(X) WRITE_ONE(X)
@@ -403,40 +448,38 @@ static void dqlite_sigsafe_fprintf(struct trace_buffer *writer, const char *fmt,
 #define WRITE_OUT_8(X, ...) WRITE_ONE(X), WRITE_OUT_7(__VA_ARGS__)
 #define WRITE_OUT_9(X, ...) WRITE_ONE(X), WRITE_OUT_8(__VA_ARGS__)
 #define WRITE_OUT_10(X, ...) WRITE_ONE(X), WRITE_OUT_9(__VA_ARGS__)
-#define WRITE_OUT(...) MACRO_CAT(WRITE_OUT_, COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)
+#define WRITE_OUT(...) \
+	MACRO_CAT(WRITE_OUT_, COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)
 
-DQLITE_VISIBLE_TO_TESTS DQLITE_NOINLINE
-void dqlite_print_crash_trace(int fd) {
-	uint64_t next_id = atomic_load(&trace_id_generator);
-
+void dqlite_print_crash_trace(int fd)
+{
 	/* Iterate over trace records in order of their IDs */
-	uint64_t n_records = DQLITE_MAX_CRASH_TRACE;
-	if (next_id < DQLITE_MAX_CRASH_TRACE) {
-		n_records = next_id;
-	}
+	uint32_t next_id = atomic_load(&trace_id_generator);
+	const uint32_t n_records = min(next_id, DQLITE_MAX_CRASH_TRACE);
 
 	struct trace_buffer writer = {
 		.fd = fd,
 	};
 
-	WRITE_OUT("Tentatively showing last ", n_records, " crash trace records:\n");
+	WRITE_OUT("Tentatively showing last ", n_records,
+		  " crash trace records:\n");
 
-	for (uint64_t id = next_id - n_records; id < next_id; id++) {
-		size_t index = id % DQLITE_MAX_CRASH_TRACE;
+	for (uint32_t id = next_id - n_records; id < next_id; id++) {
+		uint32_t index = id % DQLITE_MAX_CRASH_TRACE;
 
-		atomic_thread_fence(memory_order_acquire);
-		struct trace_record record = {
-			.id = trace_records[index].id,
-		};
-		if (record.id != id) {
-			/* This record has not been written yet or is from a previous iteration */
+		uint32_t record_id = atomic_load_explicit(
+		    &trace_records[index].id, memory_order_acquire);
+		if (record_id != id) {
+			/* This record has not been written yet or is from a
+			 * previous iteration */
 			continue;
 		}
-		record = trace_records[index];
+		const struct trace_record record = trace_records[index];
 
-		/* Print a simplified header for crashes. 
+		/* Print a simplified header for crashes.
 		 * Example:
-		 *   91205050700 001132 		uvClientSend  src/uv_send.c:218 append entries
+		 *   91205050700 001132 		uvClientSend
+		 * src/uv_send.c:218 append entries
 		 */
 		WRITE_OUT("\t ", record.ns, " ", record.tid, " ");
 		WRITE_OUT(tracerShortFileName(record.trace_def->file), ":",

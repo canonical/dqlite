@@ -24,11 +24,6 @@ extern int _main_suites_n;
 #define TEST__CAP SUITE__CAP
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
-void dqlite_print_trace(int skip);
-void dqlite_print_crash_trace(int fd);
-#endif
-
-#ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
 #if defined(HAVE_BACKTRACE_H)
 #include <backtrace.h>
@@ -120,6 +115,8 @@ void dqlite_print_crash_trace(int fd);
 	static void print_backtrace(int sig)                                  \
 	{                                                                     \
 		(void)sig;                                                    \
+		/* Prevent recursive printing of backtrace in case printing   \
+		 * raises a signal (because of a bug?) */                     \
 		static bool printing = false;                                 \
 		if (!printing) {                                              \
 			printing = true;                                      \

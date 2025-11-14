@@ -69,4 +69,12 @@ static inline bool is_po2(unsigned long n) {
 	return n > 0 && (n & (n - 1)) == 0;
 }
 
+#ifndef max
+# define max(a, b) ((a) < (b) ? (b) : (a))
+#endif
+
+#ifndef min
+# define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
 #endif /* DQLITE_UTILS_H_ */

@@ -35,8 +35,6 @@
 #define __builtin_assume_aligned(x, y) x
 #endif
 
-#define max(a, b) ((a) > (b) ? (a) : (b))
-
 /* Byte order */
 #if defined(DQLITE_LITTLE_ENDIAN)
 #define VFS__BIGENDIAN 0

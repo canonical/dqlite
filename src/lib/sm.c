@@ -22,7 +22,7 @@ int sm_state(const struct sm *m)
 
 static inline void sm_obs(const struct sm *m)
 {
-	tracef("'%s' pid: %d sm_id: %" PRIu64 " %s |",
+	tracef("%s pid: %d sm_id: %" PRIu64 " %s |",
 		m->name, m->pid, m->id, m->conf[sm_state(m)].name);
 }
 
