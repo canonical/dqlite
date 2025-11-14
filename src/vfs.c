@@ -1969,7 +1969,7 @@ static int vfsPublishShm(struct vfsMainFile *f)
 	/* Copy the hash map array for the first region */
 	memcpy(first_region_shared + headerSize,
 	       first_region_private + headerSize, map_size - headerSize);
-	atomic_thread_fence(memory_order_relaxed);
+	__sync_synchronize();
 
 	/* Finally publish the two copies of the WAL Index information and
 	 * remap. */
@@ -1977,7 +1977,7 @@ static int vfsPublishShm(struct vfsMainFile *f)
 	       f->mappedShmRegions.ptr[0] + VFS__WAL_INDEX_HEADER_SIZE,
 	       VFS__WAL_INDEX_HEADER_SIZE);
 	/* See https://github.com/sqlite/sqlite/blob/1ea6a53/src/wal.c#L2585 */
-	atomic_thread_fence(memory_order_seq_cst);
+	__sync_synchronize();
 	memcpy(first_region_shared, f->mappedShmRegions.ptr[0],
 	       VFS__WAL_INDEX_HEADER_SIZE);
 
@@ -2149,7 +2149,7 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 static void vfsMainFileShmBarrier(sqlite3_file *file)
 {
 	(void)file;
-	atomic_thread_fence(memory_order_seq_cst);
+	__sync_synchronize();
 }
 
 static int vfsMainFileShmUnmap(sqlite3_file *file, int delete_flag)
