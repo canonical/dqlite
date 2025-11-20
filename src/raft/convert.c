@@ -28,9 +28,8 @@ static const char *stateToStr(unsigned short state)
 	}
 }
 
-
 /* Clear follower state. */
-static void convertClearFollower(struct raft *r)
+static void convertClearFollower(const struct raft *r)
 {
 	tracef("clear follower state");
 	if (r->follower_state.current_leader.address != NULL) {
@@ -39,7 +38,7 @@ static void convertClearFollower(struct raft *r)
 }
 
 /* Clear candidate state. */
-static void convertClearCandidate(struct raft *r)
+static void convertClearCandidate(const struct raft *r)
 {
 	tracef("clear candidate state");
 	if (r->candidate_state.votes != NULL) {
@@ -76,7 +75,7 @@ static void convertFailChange(struct raft_change *req)
 }
 
 /* Clear leader state. */
-static void convertClearLeader(struct raft *r)
+static void convertClearLeader(const struct raft *r)
 {
 	tracef("clear leader state");
 	if (r->leader_state.progress != NULL) {
@@ -105,7 +104,6 @@ static void convertClearLeader(struct raft *r)
 	 * is still catching up and no entry was submitted. */
 	if (r->leader_state.change != NULL) {
 		convertFailChange(r->leader_state.change);
-		r->leader_state.change = NULL;
 	}
 }
 
@@ -131,15 +129,19 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 
 	switch (old_state) {
 		case RAFT_FOLLOWER:
-		    convertClearFollower(r);
+			convertClearFollower(r);
 			break;
 		case RAFT_CANDIDATE:
-		    convertClearCandidate(r);
+			convertClearCandidate(r);
 			break;
 		case RAFT_LEADER:
-		    convertClearLeader(r);
+			convertClearLeader(r);
 			break;
-		case RAFT_UNAVAILABLE: break;
+		case RAFT_UNAVAILABLE:
+			break;
+		default:
+			IMPOSSIBLE("unknown state");
+			break;
 	}
 
 	r->state = new_state;
@@ -153,6 +155,11 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 		case RAFT_LEADER:
 			r->leader_state =
 			    (struct raft_leader_state){ .voter_contacts = 1 };
+			break;
+		case RAFT_UNAVAILABLE:
+			break;
+		default:
+			IMPOSSIBLE("unknown state");
 			break;
 	}
 
@@ -221,8 +228,6 @@ void convertInitialBarrierCb(struct raft_barrier *req, int status)
 
 int convertToLeader(struct raft *r)
 {
-	int rv;
-
 	tracef("become leader for term %" PRIu64, r->current_term);
 
 	convertSetState(r, RAFT_LEADER);
@@ -234,7 +239,7 @@ int convertToLeader(struct raft *r)
 	queue_init(&r->leader_state.requests);
 
 	/* Allocate and initialize the progress array. */
-	rv = progressBuildArray(r);
+	int rv = progressBuildArray(r);
 	if (rv != 0) {
 		return rv;
 	}
