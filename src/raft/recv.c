@@ -72,7 +72,7 @@ static int recvMessage(struct raft *r, struct raft_message *message)
 	};
 
 	if (rv != 0 && rv != RAFT_NOCONNECTION) {
-		tracef("recv: %d: %s", message->type, raft_strerror(rv));
+		tracef("recv: %u: %s", message->type, raft_strerror(rv));
 		return rv;
 	}
 

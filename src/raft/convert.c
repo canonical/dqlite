@@ -1,10 +1,10 @@
+#include "convert.h"
 #include "../lib/assert.h"
 #include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
 #include "callbacks.h"
 #include "configuration.h"
-#include "convert.h"
 #include "election.h"
 #include "log.h"
 #include "membership.h"
@@ -12,43 +12,30 @@
 #include "replication.h"
 #include "request.h"
 
-/* Convenience for setting a new state value and asserting that the transition
- * is valid. */
-static void convertSetState(struct raft *r, unsigned short new_state)
+static const char *stateToStr(unsigned short state)
 {
-	/* Check that the transition is legal, see Figure 3.3. Note that with
-	 * respect to the paper we have an additional "unavailable" state, which
-	 * is the initial or final state. */
-	unsigned short old_state = r->state;
-	tracef("old_state: %u new_state: %u", (unsigned int)old_state, (unsigned int)new_state);
-	dqlite_assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
-	       (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
-	       (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
-	       (r->state == RAFT_CANDIDATE && new_state == RAFT_LEADER) ||
-	       (r->state == RAFT_LEADER && new_state == RAFT_FOLLOWER) ||
-	       (r->state == RAFT_FOLLOWER && new_state == RAFT_UNAVAILABLE) ||
-	       (r->state == RAFT_CANDIDATE && new_state == RAFT_UNAVAILABLE) ||
-	       (r->state == RAFT_LEADER && new_state == RAFT_UNAVAILABLE));
-	r->state = new_state;
-	if (r->state == RAFT_LEADER) {
-		r->leader_state.voter_contacts = 1;
-	}
-
-	struct raft_callbacks *cbs = raftGetCallbacks(r);
-	if (cbs != NULL && cbs->state_cb != NULL) {
-		cbs->state_cb(r, old_state, new_state);
+	switch (state) {
+		case RAFT_UNAVAILABLE:
+			return "UNAVAILABLE";
+		case RAFT_FOLLOWER:
+			return "FOLLOWER";
+		case RAFT_CANDIDATE:
+			return "CANDIDATE";
+		case RAFT_LEADER:
+			return "LEADER";
+		default:
+			return "UNKNOWN";
 	}
 }
+
 
 /* Clear follower state. */
 static void convertClearFollower(struct raft *r)
 {
 	tracef("clear follower state");
-	r->follower_state.current_leader.id = 0;
 	if (r->follower_state.current_leader.address != NULL) {
 		raft_free(r->follower_state.current_leader.address);
 	}
-	r->follower_state.current_leader.address = NULL;
 }
 
 /* Clear candidate state. */
@@ -57,7 +44,6 @@ static void convertClearCandidate(struct raft *r)
 	tracef("clear candidate state");
 	if (r->candidate_state.votes != NULL) {
 		raft_free(r->candidate_state.votes);
-		r->candidate_state.votes = NULL;
 	}
 }
 
@@ -95,7 +81,6 @@ static void convertClearLeader(struct raft *r)
 	tracef("clear leader state");
 	if (r->leader_state.progress != NULL) {
 		raft_free(r->leader_state.progress);
-		r->leader_state.progress = NULL;
 	}
 
 	/* Fail all outstanding requests */
@@ -105,7 +90,7 @@ static void convertClearLeader(struct raft *r)
 		head = queue_head(&r->leader_state.requests);
 		queue_remove(head);
 		req = QUEUE_DATA(head, struct request, queue);
-		dqlite_assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
+		dqlite_assert(IN(req->type, RAFT_COMMAND, RAFT_BARRIER));
 		switch (req->type) {
 			case RAFT_COMMAND:
 				convertFailApply((struct raft_apply *)req);
@@ -124,27 +109,61 @@ static void convertClearLeader(struct raft *r)
 	}
 }
 
-/* Clear the current state */
-static void convertClear(struct raft *r)
+/* Convenience for setting a new state value and asserting that the transition
+ * is valid. */
+static void convertSetState(struct raft *r, unsigned short new_state)
 {
-	dqlite_assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
-	       r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
-	switch (r->state) {
+	/* Check that the transition is legal, see Figure 3.3. Note that with
+	 * respect to the paper we have an additional "unavailable" state, which
+	 * is the initial or final state. */
+	unsigned short old_state = r->state;
+	tracef("old_state: %s new_state: %s", stateToStr(old_state),
+	       stateToStr(new_state));
+
+	dqlite_assert(
+	    ERGO(r->state == RAFT_UNAVAILABLE, IN(new_state, RAFT_FOLLOWER)) &&
+	    ERGO(r->state == RAFT_FOLLOWER,
+		 IN(new_state, RAFT_CANDIDATE, RAFT_UNAVAILABLE)) &&
+	    ERGO(r->state == RAFT_CANDIDATE,
+		 IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_LEADER)) &&
+	    ERGO(r->state == RAFT_LEADER,
+		 IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER)));
+
+	switch (old_state) {
 		case RAFT_FOLLOWER:
-			convertClearFollower(r);
+		    convertClearFollower(r);
 			break;
 		case RAFT_CANDIDATE:
-			convertClearCandidate(r);
+		    convertClearCandidate(r);
 			break;
 		case RAFT_LEADER:
-			convertClearLeader(r);
+		    convertClearLeader(r);
 			break;
+		case RAFT_UNAVAILABLE: break;
+	}
+
+	r->state = new_state;
+	switch (r->state) {
+		case RAFT_FOLLOWER:
+			r->follower_state = (struct raft_follower_state){};
+			break;
+		case RAFT_CANDIDATE:
+			r->candidate_state = (struct raft_candidate_state){};
+			break;
+		case RAFT_LEADER:
+			r->leader_state =
+			    (struct raft_leader_state){ .voter_contacts = 1 };
+			break;
+	}
+
+	struct raft_callbacks *cbs = raftGetCallbacks(r);
+	if (cbs != NULL && cbs->state_cb != NULL) {
+		cbs->state_cb(r, old_state, new_state);
 	}
 }
 
 void convertToFollower(struct raft *r)
 {
-	convertClear(r);
 	convertSetState(r, RAFT_FOLLOWER);
 
 	/* Reset election timer. */
@@ -163,7 +182,6 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 
 	(void)server; /* Only used for assertions. */
 
-	convertClear(r);
 	convertSetState(r, RAFT_CANDIDATE);
 
 	/* Allocate the votes array. */
@@ -188,7 +206,6 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 	/* Start a new election round */
 	rv = electionStart(r);
 	if (rv != 0) {
-		convertClear(r);
 		convertSetState(r, RAFT_FOLLOWER);
 		return rv;
 	}
@@ -208,7 +225,6 @@ int convertToLeader(struct raft *r)
 
 	tracef("become leader for term %" PRIu64, r->current_term);
 
-	convertClear(r);
 	convertSetState(r, RAFT_LEADER);
 
 	/* Reset timers */
@@ -235,7 +251,8 @@ int convertToLeader(struct raft *r)
 	 * committed if we are the only voter around. */
 	size_t n_voters = configurationVoterCount(&r->configuration);
 	if (n_voters == 1 && (r->last_stored > r->commit_index)) {
-		tracef("apply log entries after self election %" PRIu64 " %" PRIu64,
+		tracef("apply log entries after self election %" PRIu64
+		       " %" PRIu64,
 		       r->last_stored, r->commit_index);
 		r->commit_index = r->last_stored;
 		rv = replicationApply(r);
@@ -270,7 +287,5 @@ void convertToUnavailable(struct raft *r)
 	if (r->transfer != NULL) {
 		membershipLeadershipTransferClose(r);
 	}
-	convertClear(r);
 	convertSetState(r, RAFT_UNAVAILABLE);
 }
-
