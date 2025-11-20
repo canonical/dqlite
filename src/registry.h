@@ -32,6 +32,6 @@ struct db *registry__get(const struct registry *r, const char *filename);
 /**
  * Returns the number of databases in the registry. 
  */
-inline size_t registry__size(const struct registry *r) { return r->size; }
+static inline size_t registry__size(const struct registry *r) { return r->size; }
 
 #endif /* REGISTRY_H_*/
