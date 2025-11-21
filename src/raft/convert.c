@@ -28,20 +28,6 @@ static const char *stateToStr(unsigned short state)
 	}
 }
 
-/* Clear follower state. */
-static void convertClearFollower(const struct raft *r)
-{
-	tracef("clear follower state");
-	raft_free(r->follower_state.current_leader.address);
-}
-
-/* Clear candidate state. */
-static void convertClearCandidate(const struct raft *r)
-{
-	tracef("clear candidate state");
-	raft_free(r->candidate_state.votes);
-}
-
 static void convertFailApply(struct raft_apply *req)
 {
 	PRE(req != NULL);
@@ -70,36 +56,53 @@ static void convertFailChange(struct raft_change *req)
 	}
 }
 
-/* Clear leader state. */
-static void convertClearLeader(const struct raft *r)
+static void freeRaftState(const struct raft *r)
 {
-	tracef("clear leader state");
-	if (r->leader_state.progress != NULL) {
-		raft_free(r->leader_state.progress);
-	}
+	tracef("clear state %s", stateToStr(r->state));
 
-	/* Fail all outstanding requests */
-	while (!queue_empty(&r->leader_state.requests)) {
-		struct request *req;
-		queue *head;
-		head = queue_head(&r->leader_state.requests);
-		queue_remove(head);
-		req = QUEUE_DATA(head, struct request, queue);
-		dqlite_assert(IN(req->type, RAFT_COMMAND, RAFT_BARRIER));
-		switch (req->type) {
-			case RAFT_COMMAND:
-				convertFailApply((struct raft_apply *)req);
-				break;
-			case RAFT_BARRIER:
-				convertFailBarrier((struct raft_barrier *)req);
-				break;
-		};
-	}
+	switch (r->state) {
+		case RAFT_FOLLOWER:
+			raft_free(r->follower_state.current_leader.address);
+			break;
+		case RAFT_CANDIDATE:
+			raft_free(r->candidate_state.votes);
+			break;
+		case RAFT_UNAVAILABLE:
+			break;
+		case RAFT_LEADER:
+			raft_free(r->leader_state.progress);
 
-	/* Fail any promote request that is still outstanding because the server
-	 * is still catching up and no entry was submitted. */
-	if (r->leader_state.change != NULL) {
-		convertFailChange(r->leader_state.change);
+			/* Fail all outstanding requests */
+			while (!queue_empty(&r->leader_state.requests)) {
+				struct request *req;
+				queue *head;
+				head = queue_head(&r->leader_state.requests);
+				queue_remove(head);
+				req = QUEUE_DATA(head, struct request, queue);
+				dqlite_assert(
+				    IN(req->type, RAFT_COMMAND, RAFT_BARRIER));
+				switch (req->type) {
+					case RAFT_COMMAND:
+						convertFailApply(
+						    (struct raft_apply *)req);
+						break;
+					case RAFT_BARRIER:
+						convertFailBarrier(
+						    (struct raft_barrier *)req);
+						break;
+				};
+			}
+
+			/* Fail any promote request that is still outstanding
+			 * because the server is still catching up and no entry
+			 * was submitted. */
+			if (r->leader_state.change != NULL) {
+				convertFailChange(r->leader_state.change);
+			}
+			break;
+		default:
+			IMPOSSIBLE("unknown state");
+			break;
 	}
 }
 
@@ -123,22 +126,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 	    ERGO(r->state == RAFT_LEADER,
 		 IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER)));
 
-	switch (old_state) {
-		case RAFT_FOLLOWER:
-			convertClearFollower(r);
-			break;
-		case RAFT_CANDIDATE:
-			convertClearCandidate(r);
-			break;
-		case RAFT_LEADER:
-			convertClearLeader(r);
-			break;
-		case RAFT_UNAVAILABLE:
-			break;
-		default:
-			IMPOSSIBLE("unknown state");
-			break;
-	}
+	freeRaftState(r);
 
 	r->state = new_state;
 	switch (r->state) {
