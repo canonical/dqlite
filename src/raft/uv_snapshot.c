@@ -68,7 +68,7 @@ void uvSnapshotFilenameOf(struct uvSnapshotInfo *info, char *filename)
 	filename[len] = 0;
 }
 
-int UvSnapshotInfoAppendIfMatch(struct uv *uv,
+int UvSnapshotInfoAppendIfMatch(const char *dir,
 				const char *filename,
 				struct uvSnapshotInfo *infos[],
 				size_t *n_infos,
@@ -94,7 +94,7 @@ int UvSnapshotInfoAppendIfMatch(struct uv *uv,
 	 * before finishing the snapshot, or that another thread is still busy
 	 * writing the snapshot. */
 	uvSnapshotFilenameOf(&info, snapshot_filename);
-	rv = UvFsFileExists(uv->dir, snapshot_filename, &exists, errmsg);
+	rv = UvFsFileExists(dir, snapshot_filename, &exists, errmsg);
 	if (rv != 0) {
 		tracef("stat %s: %s", snapshot_filename, errmsg);
 		rv = RAFT_IOERR;
@@ -109,7 +109,7 @@ int UvSnapshotInfoAppendIfMatch(struct uv *uv,
 	 * renaming fully written and synced tmp-files. Leaving it here, just to
 	 * be extra-safe. Can probably be removed once more data integrity
 	 * checks are performed at startup. */
-	rv = UvFsFileIsEmpty(uv->dir, snapshot_filename, &is_empty, errmsg);
+	rv = UvFsFileIsEmpty(dir, snapshot_filename, &is_empty, errmsg);
 	if (rv != 0) {
 		tracef("is_empty %s: %s", snapshot_filename, errmsg);
 		rv = RAFT_IOERR;
@@ -213,8 +213,8 @@ void UvSnapshotSort(struct uvSnapshotInfo *infos, size_t n_infos)
 
 /* Parse the metadata file of a snapshot and populate the metadata portion of
  * the given snapshot object accordingly. */
-static int uvSnapshotLoadMeta(struct uv *uv,
-			      struct uvSnapshotInfo *info,
+int uvSnapshotLoadMeta(const char *dir,
+			      const struct uvSnapshotInfo *info,
 			      struct raft_snapshot *snapshot,
 			      char *errmsg)
 {
@@ -232,7 +232,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	snapshot->term = info->term;
 	snapshot->index = info->index;
 
-	rv = UvFsOpenFileForReading(uv->dir, info->filename, &fd, errmsg);
+	rv = UvFsOpenFileForReading(dir, info->filename, &fd, errmsg);
 	if (rv != 0) {
 		tracef("open %s: %s", info->filename, errmsg);
 		rv = RAFT_IOERR;
@@ -360,7 +360,7 @@ int UvSnapshotLoad(struct uv *uv,
 		   char *errmsg)
 {
 	int rv;
-	rv = uvSnapshotLoadMeta(uv, meta, snapshot, errmsg);
+	rv = uvSnapshotLoadMeta(uv->dir, meta, snapshot, errmsg);
 	if (rv != 0) {
 		return rv;
 	}
@@ -444,7 +444,7 @@ static int uvRemoveOldSegmentsAndSnapshots(struct uv *uv,
 	size_t n_segments;
 	int rv = 0;
 
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    errmsg);
 	if (rv != 0) {
 		goto out;
@@ -598,6 +598,20 @@ static void uvSnapshotPutBarrierCb(struct UvBarrierReq *barrier)
 	uvSnapshotPutStart(put);
 }
 
+void formatSnapshotMetaHeader(void *header, raft_index index, const struct raft_buffer *content) { 
+	void *cursor = header;
+	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, 0);
+	bytePut64(&cursor, index);
+	bytePut64(&cursor, content->len);
+
+	unsigned crc = byteCrc32(header + 16, 16, 0);
+	crc = byteCrc32(content->base, content->len, crc);
+
+	cursor = header + 8;
+	bytePut64(&cursor, crc);
+}
+
 int UvSnapshotPut(struct raft_io *io,
 		  unsigned trailing,
 		  struct raft_io_snapshot_put *req,
@@ -606,8 +620,6 @@ int UvSnapshotPut(struct raft_io *io,
 {
 	struct uv *uv;
 	struct uvSnapshotPut *put;
-	void *cursor;
-	unsigned crc;
 	int rv;
 	raft_index next_index;
 
@@ -645,17 +657,7 @@ int UvSnapshotPut(struct raft_io *io,
 		goto err_after_req_alloc;
 	}
 
-	cursor = put->meta.header;
-	bytePut64(&cursor, UV__DISK_FORMAT);
-	bytePut64(&cursor, 0);
-	bytePut64(&cursor, snapshot->configuration_index);
-	bytePut64(&cursor, put->meta.bufs[1].len);
-
-	crc = byteCrc32(&put->meta.header[2], sizeof(uint64_t) * 2, 0);
-	crc = byteCrc32(put->meta.bufs[1].base, put->meta.bufs[1].len, crc);
-
-	cursor = &put->meta.header[1];
-	bytePut64(&cursor, crc);
+	formatSnapshotMetaHeader(put->meta.header, snapshot->configuration_index, &put->meta.bufs[1]);
 
 	/* - If the trailing parameter is set to 0, it means that we're
 	 * restoring a snapshot. Submit a barrier request setting the next
@@ -692,7 +694,7 @@ static void uvSnapshotGetWorkCb(uv_work_t *work)
 	size_t n_segments;
 	int rv;
 	get->status = 0;
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    get->errmsg);
 	if (rv != 0) {
 		get->status = rv;

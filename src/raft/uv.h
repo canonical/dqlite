@@ -109,7 +109,7 @@ int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, char *errmsg);
 /* Store the given metadata to disk, writing the appropriate metadata file
  * according to the metadata version (if the version is odd, write metadata1,
  * otherwise write metadata2). */
-int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata);
+int uvMetadataStore(const char *dir, const struct uvMetadata *metadata, char *errmsg);
 
 /* Metadata about a segment file. */
 struct uvSegmentInfo
@@ -152,6 +152,13 @@ int uvSegmentKeepTrailing(struct uv *uv,
 			  raft_index last_index,
 			  size_t trailing,
 			  char *errmsg);
+
+/* Load all entries contained in an open segment. */
+int uvSegmentLoadOpen(struct uv *uv,
+			     struct uvSegmentInfo *info,
+			     struct raft_entry *entries[],
+			     size_t *n,
+			     raft_index *next_index);
 
 /* Load all entries contained in the given closed segment. */
 int uvSegmentLoadClosed(struct uv *uv,
@@ -252,7 +259,7 @@ int UvSnapshotMetaIsOrphan(const char *dir, const char *filename, bool *orphan);
 /* Append a new item to the given snapshot info list if the given filename
  * matches the pattern of a snapshot metadata file (snapshot-xxx-yyy-zzz.meta)
  * and there is actually a matching non-empty snapshot file on disk. */
-int UvSnapshotInfoAppendIfMatch(struct uv *uv,
+int UvSnapshotInfoAppendIfMatch(const char *dir,
 				const char *filename,
 				struct uvSnapshotInfo *infos[],
 				size_t *n_infos,
@@ -288,7 +295,7 @@ int UvAsyncWork(struct raft_io *io,
 /* Return a list of all snapshots and segments found in the data directory. Both
  * snapshots and segments are ordered by filename (closed segments come before
  * open ones). */
-int UvList(struct uv *uv,
+int UvList(const char* dir,
 	   struct uvSnapshotInfo *snapshots[],
 	   size_t *n_snapshots,
 	   struct uvSegmentInfo *segments[],

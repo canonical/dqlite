@@ -369,7 +369,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 	*n = 0;
 
 	/* List available snapshots and segments. */
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    uv->io->errmsg);
 	if (rv != 0) {
 		tracef("failed to list snapshots and segments, error: %d", rv);
@@ -526,7 +526,7 @@ static int uvSetTerm(struct raft_io *io, const raft_term term)
 	uv->metadata.version++;
 	uv->metadata.term = term;
 	uv->metadata.voted_for = 0;
-	rv = uvMetadataStore(uv, &uv->metadata);
+	rv = uvMetadataStore(uv->dir, &uv->metadata, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}
@@ -541,7 +541,7 @@ static int uvSetVote(struct raft_io *io, const raft_id server_id)
 	uv = io->impl;
 	uv->metadata.version++;
 	uv->metadata.voted_for = server_id;
-	rv = uvMetadataStore(uv, &uv->metadata);
+	rv = uvMetadataStore(uv->dir, &uv->metadata, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}

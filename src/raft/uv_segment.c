@@ -203,12 +203,12 @@ static int uvConsumeContent(const struct raft_buffer *content,
 /* Load a single batch of entries from a segment.
  *
  * Set @last to #true if the loaded batch is the last one. */
-static int uvLoadEntriesBatch(struct uv *uv,
-			      const struct raft_buffer *content,
+int uvLoadEntriesBatch(const struct raft_buffer *content,
 			      struct raft_entry **entries,
 			      unsigned *n_entries,
 			      size_t *offset, /* Offset of last batch */
-			      bool *last)
+			      bool *last,
+				  char errmsg[RAFT_ERRMSG_BUF_SIZE])
 {
 	void *checksums;           /* CRC32 checksums */
 	void *batch;               /* Entries batch */
@@ -219,7 +219,6 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	struct raft_buffer data;   /* Batch data */
 	uint32_t crc1;             /* Target checksum */
 	uint32_t crc2;             /* Actual checksum */
-	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 	size_t start;
 	int rv;
 
@@ -230,7 +229,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	rv = uvConsumeContent(content, offset, sizeof(uint32_t) * 2, &checksums,
 			      errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read preamble");
+		ErrMsgWrapf(errmsg, "read preamble");
 		return RAFT_IOERR;
 	}
 
@@ -239,13 +238,13 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	rv =
 	    uvConsumeContent(content, offset, sizeof(uint64_t), &batch, errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read preamble");
+		ErrMsgWrapf(errmsg, "read preamble");
 		return RAFT_IOERR;
 	}
 
 	n = (size_t)byteFlip64(*(uint64_t *)batch);
 	if (n == 0) {
-		ErrMsgPrintf(uv->io->errmsg,
+		ErrMsgPrintf(errmsg,
 			     "entries count in preamble is zero");
 		rv = RAFT_CORRUPT;
 		goto err;
@@ -258,7 +257,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	max_n = UV__MAX_SEGMENT_SIZE / (sizeof(uint64_t) * 4);
 
 	if (n > max_n) {
-		ErrMsgPrintf(uv->io->errmsg,
+		ErrMsgPrintf(errmsg,
 			     "entries count %lu in preamble is too high", n);
 		rv = RAFT_CORRUPT;
 		goto err;
@@ -273,7 +272,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 			      uvSizeofBatchHeader(n) - sizeof(uint64_t), NULL,
 			      errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read header");
+		ErrMsgWrapf(errmsg, "read header"); 
 		rv = RAFT_IOERR;
 		goto err;
 	}
@@ -282,7 +281,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	crc1 = byteFlip32(((uint32_t *)checksums)[0]);
 	crc2 = byteCrc32(header.base, header.len, 0);
 	if (crc1 != crc2) {
-		ErrMsgPrintf(uv->io->errmsg, "header checksum mismatch");
+		ErrMsgPrintf(errmsg, "header checksum mismatch");
 		rv = RAFT_CORRUPT;
 		goto err;
 	}
@@ -304,7 +303,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	/* Consume the batch data */
 	rv = uvConsumeContent(content, offset, data.len, NULL, errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read data");
+		ErrMsgWrapf(errmsg, "read data");
 		rv = RAFT_IOERR;
 		goto err_after_header_decode;
 	}
@@ -314,7 +313,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	crc2 = byteCrc32(data.base, data.len, 0);
 	if (crc1 != crc2) {
 		tracef("batch is bad");
-		ErrMsgPrintf(uv->io->errmsg, "data checksum mismatch");
+		ErrMsgPrintf(errmsg, "data checksum mismatch");
 		rv = RAFT_CORRUPT;
 		goto err_after_header_decode;
 	}
@@ -415,8 +414,8 @@ int uvSegmentLoadClosed(struct uv *uv,
 	last = false;
 	offset = sizeof format;
 	for (i = 1; !last; i++) {
-		rv = uvLoadEntriesBatch(uv, &buf, &tmp_entries, &tmp_n, &offset,
-					&last);
+		rv = uvLoadEntriesBatch(&buf, &tmp_entries, &tmp_n, &offset,
+					&last, uv->io->errmsg);
 		if (rv != 0) {
 			ErrMsgWrapf(uv->io->errmsg,
 				    "entries batch %u starting at byte %zu", i,
@@ -477,8 +476,7 @@ static bool uvContentHasOnlyTrailingZeros(const struct raft_buffer *buf,
 	return true;
 }
 
-/* Load all entries contained in an open segment. */
-static int uvSegmentLoadOpen(struct uv *uv,
+int uvSegmentLoadOpen(struct uv *uv,
 			     struct uvSegmentInfo *info,
 			     struct raft_entry *entries[],
 			     size_t *n,
@@ -545,8 +543,8 @@ static int uvSegmentLoadOpen(struct uv *uv,
 
 	/* Load all batches in the segment. */
 	for (i = 1; !last; i++) {
-		rv = uvLoadEntriesBatch(uv, &buf, &tmp_entries, &tmp_n_entries,
-					&offset, &last);
+		rv = uvLoadEntriesBatch(&buf, &tmp_entries, &tmp_n_entries,
+					&offset, &last, uv->io->errmsg);
 		if (rv != 0) {
 			/* If this isn't a decoding error, just bail out. */
 			if (rv != RAFT_CORRUPT) {

@@ -25,7 +25,7 @@ static bool uvListShouldIgnore(const char *filename)
 	return result;
 }
 
-int UvList(struct uv *uv,
+int UvList(const char *dir,
 	   struct uvSnapshotInfo *snapshots[],
 	   size_t *n_snapshots,
 	   struct uvSegmentInfo *segments[],
@@ -38,7 +38,7 @@ int UvList(struct uv *uv,
 	int i;
 	int rv;
 
-	n = uv_fs_scandir(NULL, &req, uv->dir, 0, NULL);
+	n = uv_fs_scandir(NULL, &req, dir, 0, NULL);
 	if (n < 0) {
 		ErrMsgPrintf(errmsg, "scan data directory: %s", uv_strerror(n));
 		return RAFT_IOERR;
@@ -71,7 +71,7 @@ int UvList(struct uv *uv,
 
 		/* Append to the snapshot list if it's a snapshot metadata
 		 * filename and a valid associated snapshot file exists. */
-		rv = UvSnapshotInfoAppendIfMatch(uv, filename, snapshots,
+		rv = UvSnapshotInfoAppendIfMatch(dir, filename, snapshots,
 						 n_snapshots, &appended);
 		if (rv != 0) {
 			goto error;

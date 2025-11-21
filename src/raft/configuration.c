@@ -10,8 +10,7 @@
 
 void configurationInit(struct raft_configuration *c)
 {
-	c->servers = NULL;
-	c->n = 0;
+	*c = (struct raft_configuration){};
 }
 
 void configurationClose(struct raft_configuration *c)
@@ -25,6 +24,7 @@ void configurationClose(struct raft_configuration *c)
 	if (c->servers != NULL) {
 		raft_free(c->servers);
 	}
+	*c = (struct raft_configuration){};
 }
 
 unsigned configurationIndexOf(const struct raft_configuration *c,
