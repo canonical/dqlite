@@ -32,18 +32,14 @@ static const char *stateToStr(unsigned short state)
 static void convertClearFollower(const struct raft *r)
 {
 	tracef("clear follower state");
-	if (r->follower_state.current_leader.address != NULL) {
-		raft_free(r->follower_state.current_leader.address);
-	}
+	raft_free(r->follower_state.current_leader.address);
 }
 
 /* Clear candidate state. */
 static void convertClearCandidate(const struct raft *r)
 {
 	tracef("clear candidate state");
-	if (r->candidate_state.votes != NULL) {
-		raft_free(r->candidate_state.votes);
-	}
+	raft_free(r->candidate_state.votes);
 }
 
 static void convertFailApply(struct raft_apply *req)
@@ -175,10 +171,6 @@ void convertToFollower(struct raft *r)
 
 	/* Reset election timer. */
 	electionResetTimer(r);
-
-	r->follower_state.current_leader.id = 0;
-	r->follower_state.current_leader.address = NULL;
-	r->follower_state.append_in_flight_count = 0;
 }
 
 int convertToCandidate(struct raft *r, bool disrupt_leader)
@@ -243,14 +235,6 @@ int convertToLeader(struct raft *r)
 	if (rv != 0) {
 		return rv;
 	}
-
-	r->leader_state.change = NULL;
-
-	/* Reset promotion state. */
-	r->leader_state.promotee_id = 0;
-	r->leader_state.round_number = 0;
-	r->leader_state.round_index = 0;
-	r->leader_state.round_start = 0;
 
 	/* By definition, all entries until the last_stored entry will be
 	 * committed if we are the only voter around. */
