@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdint.h>
 #include <sys/mman.h>
 
 #include "command.h"
@@ -12,7 +13,6 @@
 #include "tracing.h"
 #include "vfs.h"
 
-
 struct fsmDatabaseSnapshot {
 	sqlite3 *conn;
 	struct raft_buffer header;
@@ -25,8 +25,7 @@ struct fsmSnapshot {
 	size_t database_count;
 };
 
-struct fsm
-{
+struct fsm {
 	struct logger *logger;
 	struct registry *registry;
 	struct fsmSnapshot snapshot;
@@ -74,9 +73,9 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	}
 
 	struct vfsTransaction transaction = {
-		.n_pages      = c->frames.n_pages,
+		.n_pages = c->frames.n_pages,
 		.page_numbers = c->frames.page_numbers,
-		.pages   	  = c->frames.pages,
+		.pages = c->frames.pages,
 	};
 	rv = VfsApply(conn, &transaction);
 	if (rv != 0) {
@@ -202,10 +201,8 @@ static int decodeDatabase(const struct registry *r,
 
 	const size_t page_size = r->config->vfs.page_size;
 	dqlite_assert((header.main_size % page_size) == 0);
-	dqlite_assert(header.wal_size == 0);
 
-	const size_t page_count = (size_t)header.main_size / page_size;
-
+	size_t page_count = (size_t)header.main_size / page_size;
 	void **pages = raft_malloc(sizeof(void *) * page_count);
 	if (pages == NULL) {
 		return RAFT_NOMEM;
@@ -215,7 +212,54 @@ static int decodeDatabase(const struct registry *r,
 	}
 	cursor->p += header.main_size;
 
-	*snapshot = (struct vfsSnapshot) {
+	const size_t wal_header_size = 32;
+	if (header.wal_size > wal_header_size) {
+		tracef("pre 1.17 snapshot loading");
+		const size_t wal_frame_header_size = 24;
+		const size_t wal_frame_size = page_size + wal_frame_header_size;
+
+		dqlite_assert(header.wal_size > wal_header_size);
+		dqlite_assert(((header.wal_size - (size_t)wal_header_size) %
+			       wal_frame_size) == 0);
+
+		const unsigned n_frames =
+		    (unsigned)((header.wal_size - (size_t)wal_header_size) /
+			       wal_frame_size);
+		const char *wal = cursor->p;
+		const void *last_frame =
+		    (const uint8_t *)wal + wal_header_size +
+		    n_frames * wal_frame_size - wal_frame_size;
+
+		const size_t wal_page_count = ByteGetBe32(last_frame + 4);
+		dqlite_assert(wal_page_count != 0);
+
+		if (wal_page_count > page_count) {
+			void *wal_pages = raft_realloc(
+			    pages, sizeof(void *) * wal_page_count);
+			if (wal_pages == NULL) {
+				raft_free(pages);
+				return RAFT_NOMEM;
+			}
+			pages = wal_pages;
+			page_count = wal_page_count;
+		}
+
+		/* Read pages in the WAL order */
+		for (const char *frame = wal + wal_header_size;
+		     frame < wal + header.wal_size; frame += wal_frame_size) {
+			uint32_t page_number =
+			    ByteGetBe32((const uint8_t *)frame);
+			if (page_number >= page_count) {
+				continue;
+			}
+			dqlite_assert(page_number > 0);
+			pages[page_number - 1] =
+			    (void *)(frame + wal_frame_header_size);
+		}
+	}
+	cursor->p += header.wal_size;
+
+	*snapshot = (struct vfsSnapshot){
 		.page_count = page_count,
 		.page_size = page_size,
 		.pages = pages,
@@ -225,7 +269,8 @@ static int decodeDatabase(const struct registry *r,
 	return RAFT_OK;
 }
 
-static int integrityCheckCb(void *pArg, int n, char **values, char **names) {
+static int integrityCheckCb(void *pArg, int n, char **values, char **names)
+{
 	bool *check_passed = pArg;
 
 	PRE(check_passed != NULL);
@@ -260,9 +305,11 @@ static int restoreDatabase(struct registry *r,
 	if (rv == SQLITE_OK) {
 		bool check_passed = true;
 		char *errmsg;
-		rv = sqlite3_exec(conn, "PRAGMA quick_check", integrityCheckCb, &check_passed, &errmsg);
+		rv = sqlite3_exec(conn, "PRAGMA quick_check", integrityCheckCb,
+				  &check_passed, &errmsg);
 		if (rv != SQLITE_OK) {
-			tracef("PRAGMA quick_check failed: %s (%d)", errmsg, rv);
+			tracef("PRAGMA quick_check failed: %s (%d)", errmsg,
+			       rv);
 		} else if (!check_passed) {
 			rv = SQLITE_CORRUPT;
 		}
@@ -311,7 +358,8 @@ static int snapshotDatabase(struct db *db, struct fsmDatabaseSnapshot *snapshot)
 
 	const struct snapshotDatabase header = {
 		.filename = db->filename,
-		.main_size = snapshot->content.page_count * snapshot->content.page_size,
+		.main_size =
+		    snapshot->content.page_count * snapshot->content.page_size,
 		.wal_size = 0,
 	};
 
@@ -325,7 +373,7 @@ static int snapshotDatabase(struct db *db, struct fsmDatabaseSnapshot *snapshot)
 	char *cursor = header_buffer;
 	snapshotDatabase__encode(&header, &cursor);
 
-	snapshot->header = (struct raft_buffer) {
+	snapshot->header = (struct raft_buffer){
 		.base = header_buffer,
 		.len = header_size,
 	};
@@ -380,7 +428,8 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		i++;
 	}
 
-	struct raft_buffer *buffers = raft_malloc(buffer_count * sizeof(struct raft_buffer));
+	struct raft_buffer *buffers =
+	    raft_malloc(buffer_count * sizeof(struct raft_buffer));
 	if (buffers == NULL) {
 		rv = RAFT_NOMEM;
 		goto err;
@@ -397,9 +446,8 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		buff_i++;
 
 		dqlite_assert((buff_i + databases[i].content.page_count) <=
-		       buffer_count);
-		for (unsigned j = 0; j < databases[i].content.page_count;
-		     j++) {
+			      buffer_count);
+		for (unsigned j = 0; j < databases[i].content.page_count; j++) {
 			buffers[buff_i] = (struct raft_buffer){
 				.base = databases[i].content.pages[j],
 				.len = databases[i].content.page_size,
@@ -462,7 +510,7 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
 	tracef("fsm restore");
 	struct fsm *f = fsm->data;
-	struct cursor cursor = {buf->base, buf->len};
+	struct cursor cursor = { buf->base, buf->len };
 	struct snapshotHeader header;
 	unsigned i;
 	int rv;
@@ -508,7 +556,7 @@ int fsm__init(struct raft_fsm *fsm,
 	if (f == NULL) {
 		return DQLITE_NOMEM;
 	}
-	*f = (struct fsm) {
+	*f = (struct fsm){
 		.logger = &config->logger,
 		.registry = registry,
 	};
