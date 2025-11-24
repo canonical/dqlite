@@ -72,6 +72,7 @@ int recvTimeoutNow(struct raft *r,
 	/* Convert to candidate and start a new election. */
 	rv = convertToCandidate(r, true /* disrupt leader */);
 	if (rv != 0) {
+		tracef("convertToCandidate failed: %d", rv);
 		return rv;
 	}
 
