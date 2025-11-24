@@ -44,7 +44,23 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
-          VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
+          # Get the version from configure.ac
+          BUILD_VERSION=$(autoconf --trace="AC_INIT:\$2" 2>/dev/null)
+
+          # Find the base commit where this version was introduced
+          BASE_COMMIT=""
+          for commit in $(git rev-list HEAD -- configure.ac); do
+              if [ "$(git show "$commit:configure.ac" | autoconf --trace="AC_INIT:\$2" - 2>/dev/null)" == "${BUILD_VERSION}" ]; then
+                  BASE_COMMIT="$commit"
+              else
+                  break
+              fi
+          done
+
+          # Format the version string witout relying on git tags
+          COMMIT_COUNT=$(git rev-list --count "${BASE_COMMIT}..HEAD")
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          VERSION="${BUILD_VERSION}+git${COMMIT_COUNT}-g${SHORT_HASH}"
           dch --create \
             --distribution ${TARGET} \
             --package dqlite1.18-unstable \
