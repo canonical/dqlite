@@ -30,7 +30,7 @@ void *random_buffer(size_t len)
 			free(result);
 			return NULL;
 		}
-		offset += r;
+		offset += (size_t)r;
 	}
 	return result;
 }
@@ -75,13 +75,13 @@ static struct raft_buffer* chunk_buffer(void* buf, size_t size, size_t n) {
 	return bufs;
 }
 
-#define TEST_COMPRESS2(file, buf, size, n)                                    \
+#define TEST_COMPRESS(file, buf, size, n)                                    \
 	do {                                                                  \
 		uint8_t sha_uncompressed[20];                                 \
 		sha1(buf, size, sha_uncompressed);                            \
 		struct raft_buffer *bufs = chunk_buffer(buf, size, n);        \
 		int compress_rv =                                             \
-		    UvFsMakeCompressedFile(f->dir, file, bufs, n, f->errmsg); \
+		    UvFsMakeCompressedFile(f->dir, file, bufs, (unsigned)n, f->errmsg); \
 		munit_assert_int(compress_rv, ==, RAFT_OK);                   \
 		free(bufs);                                                   \
 		free(buf);                                                    \
@@ -100,8 +100,8 @@ TEST(compress, compressDecompressZeroLength, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 
-	TEST_COMPRESS2("temp1", NULL, 0, 1);
-	TEST_COMPRESS2("temp2", NULL, 0, 2);
+	TEST_COMPRESS("temp1", NULL, 0, 1);
+	TEST_COMPRESS("temp2", NULL, 0, 2);
 
 	return MUNIT_OK;
 }
@@ -140,7 +140,30 @@ TEST(compress,
 	/* Split the buffer into many chunks of at most 4096 bytes */
 	size_t n_bufs = (len + 4095) / 4096;
 
-	TEST_COMPRESS2("temp", buf, len, n_bufs);
+	TEST_COMPRESS("temp", buf, len, n_bufs);
+
+	return MUNIT_OK;
+}
+
+TEST(compress,
+     compressDecompressRandomBig,
+     setUp,
+     tearDown,
+     0,
+     random_one_params)
+{
+	struct fixture *f = data;
+
+	/* Fill a buffer with random data */
+	size_t len = strtoul(munit_parameters_get(params, "len"), NULL, 0);
+	if (len == 0) {
+		return MUNIT_SKIP;
+	}
+	void *buf = random_buffer(len);
+
+	size_t n_bufs = 1;
+
+	TEST_COMPRESS("temp", buf, len, n_bufs);
 
 	return MUNIT_OK;
 }
@@ -190,7 +213,7 @@ TEST(compress,
 	/* Split the buffer into many chunks of at most 4096 bytes */
 	size_t n_bufs = (len + 4095) / 4096;
 
-	TEST_COMPRESS2("test", buf, len, n_bufs); 
+	TEST_COMPRESS("test", buf, len, n_bufs); 
 
 	char path[PATH_MAX] = {};
 	int rv = UvOsJoin(f->dir, "test", path);
