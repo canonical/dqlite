@@ -7,14 +7,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#if defined(__cplusplus)
-#define BYTE__INLINE inline
-#else
 #if defined(__clang__)
-#define BYTE__INLINE static inline __attribute__((unused))
+# define BYTE__INLINE static inline __attribute__((unused))
 #else
-#define BYTE__INLINE static inline
-#endif
+# define BYTE__INLINE static inline
 #endif
 
 /* Compile-time endianess detection (best effort). */
