@@ -3,7 +3,7 @@
 #include "../lib/aio.h"
 #include "../lib/dir.h"
 #include "../lib/loop.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /******************************************************************************
  *

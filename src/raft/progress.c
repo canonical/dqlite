@@ -1,17 +1,9 @@
 #include "progress.h"
 
 #include "../tracing.h"
-#include "assert.h"
+#include "../lib/assert.h"
 #include "configuration.h"
 #include "log.h"
-
-#ifndef max
-#define max(a, b) ((a) < (b) ? (b) : (a))
-#endif
-
-#ifndef min
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
 
 /* Initialize a single progress object. */
 static void initProgress(struct raft_progress *p, raft_index last_index)
@@ -83,7 +75,7 @@ int progressRebuildArray(struct raft *r,
 			 * next/match index value in the loop above. */
 			continue;
 		}
-		assert(j == r->configuration.n);
+		dqlite_assert(j == r->configuration.n);
 		initProgress(&progress[i], last_index);
 	}
 
@@ -116,12 +108,12 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
 	bool result = false;
 
 	/* We must be in a valid state. */
-	assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
+	dqlite_assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
 	       p->state == PROGRESS__SNAPSHOT);
 
 	/* The next index to send must be lower than the highest index in our
 	 * log. */
-	assert(p->next_index <= last_index + 1);
+	dqlite_assert(p->next_index <= last_index + 1);
 
 	switch (p->state) {
 		case PROGRESS__SNAPSHOT:
@@ -228,7 +220,7 @@ bool progressMaybeDecrement(struct raft *r,
 {
 	struct raft_progress *p = &r->leader_state.progress[i];
 
-	assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
+	dqlite_assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
 	       p->state == PROGRESS__SNAPSHOT);
 
 	if (p->state == PROGRESS__SNAPSHOT) {
@@ -258,7 +250,7 @@ bool progressMaybeDecrement(struct raft *r,
 	 * not match the next index minus one. */
 	if (rejected != p->next_index - 1) {
 		tracef(
-		    "rejected index %llu different from next index %lld -> "
+		    "rejected index %" PRIu64 " different from next index %" PRIu64 " -> "
 		    "ignore ",
 		    rejected, p->next_index);
 		return false;
@@ -300,7 +292,7 @@ void progressToProbe(struct raft *r, const unsigned i)
 	 * has been sent to this peer successfully, so we probe from
 	 * snapshot_index + 1.*/
 	if (p->state == PROGRESS__SNAPSHOT) {
-		assert(p->snapshot_index > 0);
+		dqlite_assert(p->snapshot_index > 0);
 		p->next_index = max(p->match_index + 1, p->snapshot_index);
 		p->snapshot_index = 0;
 	} else {
@@ -318,7 +310,7 @@ void progressToPipeline(struct raft *r, const unsigned i)
 bool progressSnapshotDone(struct raft *r, const unsigned i)
 {
 	struct raft_progress *p = &r->leader_state.progress[i];
-	assert(p->state == PROGRESS__SNAPSHOT);
+	dqlite_assert(p->state == PROGRESS__SNAPSHOT);
 	return p->match_index >= p->snapshot_index;
 }
 

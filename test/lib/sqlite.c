@@ -1,6 +1,19 @@
 #include <sqlite3.h>
+#include <stdio.h>
 
 #include "sqlite.h"
+
+static inline void log_sqlite_error(void *arg, int e, const char *msg)
+{
+	(void)arg;
+	fprintf(stderr, "SQLITE %d %s\n", e, msg);
+}
+
+__attribute__((constructor)) static void test_sqlite_init(void)
+{
+	int rc = sqlite3_config(SQLITE_CONFIG_LOG, log_sqlite_error, NULL);
+	munit_assert(rc == SQLITE_OK);
+}
 
 void test_sqlite_setup(const MunitParameter params[])
 {

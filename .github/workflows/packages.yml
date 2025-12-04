@@ -15,6 +15,7 @@ jobs:
           - jammy
           - noble
           - plucky
+          - questing
     steps:
     - uses: actions/checkout@v5
       with:
@@ -43,7 +44,8 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
-          VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
+          # Get the version from configure.ac
+          VERSION=$(autoconf --trace="AC_INIT:\$2" 2>/dev/null)
           dch --create \
             --distribution ${TARGET} \
             --package dqlite1.18 \

@@ -1,7 +1,7 @@
 #include "recv_timeout_now.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "log.h"
@@ -18,15 +18,15 @@ int recvTimeoutNow(struct raft *r,
 	int match;
 	int rv;
 
-	assert(r != NULL);
-	assert(id > 0);
-	assert(args != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(id > 0);
+	dqlite_assert(args != NULL);
 
 	(void)address;
 
 	tracef(
-	    "self:%llu from:%llu@%s last_log_index:%llu last_log_term:%llu "
-	    "term:%llu",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s last_log_index: %" PRIu64 " last_log_term: %" PRIu64 " "
+	    "term: %" PRIu64,
 	    r->id, id, address, args->last_log_index, args->last_log_term,
 	    args->term);
 	/* Ignore the request if we are not voters. */
@@ -40,7 +40,7 @@ int recvTimeoutNow(struct raft *r,
 	 * leader. */
 	if (r->state != RAFT_FOLLOWER ||
 	    r->follower_state.current_leader.id != id) {
-		tracef("Ignore - r->state:%d current_leader.id:%llu", r->state,
+		tracef("Ignore - r->state: %d current_leader.id: %" PRIu64, r->state,
 		       r->follower_state.current_leader.id);
 		return 0;
 	}
@@ -72,6 +72,7 @@ int recvTimeoutNow(struct raft *r,
 	/* Convert to candidate and start a new election. */
 	rv = convertToCandidate(r, true /* disrupt leader */);
 	if (rv != 0) {
+		tracef("convertToCandidate failed: %d", rv);
 		return rv;
 	}
 

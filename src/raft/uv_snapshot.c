@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "array.h"
-#include "assert.h"
 #include "byte.h"
 #include "configuration.h"
 #include "heap.h"
@@ -26,7 +26,7 @@ static bool uvSnapshotParseFilename(const char *filename,
 	int consumed = 0;
 	int matched;
 	size_t filename_len = strlen(filename);
-	assert(filename_len < UV__FILENAME_LEN);
+	dqlite_assert(filename_len < UV__FILENAME_LEN);
 	if (meta) {
 		matched = sscanf(filename, UV__SNAPSHOT_META_TEMPLATE "%n",
 				 term, index, timestamp, &consumed);
@@ -63,12 +63,12 @@ static bool uvSnapshotInfoMatch(const char *filename,
 void uvSnapshotFilenameOf(struct uvSnapshotInfo *info, char *filename)
 {
 	size_t len = strlen(info->filename) - strlen(".meta");
-	assert(len < UV__FILENAME_LEN);
+	dqlite_assert(len < UV__FILENAME_LEN);
 	strcpy(filename, info->filename);
 	filename[len] = 0;
 }
 
-int UvSnapshotInfoAppendIfMatch(struct uv *uv,
+int UvSnapshotInfoAppendIfMatch(const char *dir,
 				const char *filename,
 				struct uvSnapshotInfo *infos[],
 				size_t *n_infos,
@@ -94,7 +94,7 @@ int UvSnapshotInfoAppendIfMatch(struct uv *uv,
 	 * before finishing the snapshot, or that another thread is still busy
 	 * writing the snapshot. */
 	uvSnapshotFilenameOf(&info, snapshot_filename);
-	rv = UvFsFileExists(uv->dir, snapshot_filename, &exists, errmsg);
+	rv = UvFsFileExists(dir, snapshot_filename, &exists, errmsg);
 	if (rv != 0) {
 		tracef("stat %s: %s", snapshot_filename, errmsg);
 		rv = RAFT_IOERR;
@@ -109,7 +109,7 @@ int UvSnapshotInfoAppendIfMatch(struct uv *uv,
 	 * renaming fully written and synced tmp-files. Leaving it here, just to
 	 * be extra-safe. Can probably be removed once more data integrity
 	 * checks are performed at startup. */
-	rv = UvFsFileIsEmpty(uv->dir, snapshot_filename, &is_empty, errmsg);
+	rv = UvFsFileIsEmpty(dir, snapshot_filename, &is_empty, errmsg);
 	if (rv != 0) {
 		tracef("is_empty %s: %s", snapshot_filename, errmsg);
 		rv = RAFT_IOERR;
@@ -213,8 +213,8 @@ void UvSnapshotSort(struct uvSnapshotInfo *infos, size_t n_infos)
 
 /* Parse the metadata file of a snapshot and populate the metadata portion of
  * the given snapshot object accordingly. */
-static int uvSnapshotLoadMeta(struct uv *uv,
-			      struct uvSnapshotInfo *info,
+int uvSnapshotLoadMeta(const char *dir,
+			      const struct uvSnapshotInfo *info,
 			      struct raft_snapshot *snapshot,
 			      char *errmsg)
 {
@@ -232,7 +232,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	snapshot->term = info->term;
 	snapshot->index = info->index;
 
-	rv = UvFsOpenFileForReading(uv->dir, info->filename, &fd, errmsg);
+	rv = UvFsOpenFileForReading(dir, info->filename, &fd, errmsg);
 	if (rv != 0) {
 		tracef("open %s: %s", info->filename, errmsg);
 		rv = RAFT_IOERR;
@@ -249,7 +249,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 
 	format = byteFlip64(header[0]);
 	if (format != UV__DISK_FORMAT) {
-		tracef("load %s: unsupported format %ju", info->filename,
+		tracef("load %s: unsupported format %" PRIu64, info->filename,
 		       format);
 		rv = RAFT_MALFORMED;
 		goto err_after_open;
@@ -260,8 +260,8 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	snapshot->configuration_index = byteFlip64(header[2]);
 	buf.len = (size_t)byteFlip64(header[3]);
 	if (buf.len > UV__META_MAX_CONFIGURATION_SIZE) {
-		tracef("load %s: configuration data too big (%zd)",
-		       info->filename, buf.len);
+		tracef("load %s: configuration data too big (%" PRIu64 ")",
+		       info->filename, (uint64_t)buf.len);
 		rv = RAFT_CORRUPT;
 		goto err_after_open;
 	}
@@ -310,7 +310,7 @@ err_after_open:
 	close(fd);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -350,7 +350,7 @@ static int uvSnapshotLoadData(struct uv *uv,
 err_after_read_file:
 	RaftHeapFree(buf.base);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -360,7 +360,7 @@ int UvSnapshotLoad(struct uv *uv,
 		   char *errmsg)
 {
 	int rv;
-	rv = uvSnapshotLoadMeta(uv, meta, snapshot, errmsg);
+	rv = uvSnapshotLoadMeta(uv->dir, meta, snapshot, errmsg);
 	if (rv != 0) {
 		return rv;
 	}
@@ -379,7 +379,7 @@ struct uvSnapshotPut
 	const struct raft_snapshot *snapshot;
 	struct
 	{
-		unsigned long long timestamp;
+		raft_time timestamp;
 		uint64_t header[4]; /* Format, CRC, configuration index/len */
 		struct raft_buffer bufs[2]; /* Preamble and configuration */
 	} meta;
@@ -444,7 +444,7 @@ static int uvRemoveOldSegmentsAndSnapshots(struct uv *uv,
 	size_t n_segments;
 	int rv = 0;
 
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    errmsg);
 	if (rv != 0) {
 		goto out;
@@ -539,7 +539,7 @@ static void uvSnapshotPutFinish(struct uvSnapshotPut *put)
 	struct raft_io_snapshot_put *req = put->req;
 	int status = put->status;
 	struct uv *uv = put->uv;
-	assert(uv->snapshot_put_work.data == NULL);
+	dqlite_assert(uv->snapshot_put_work.data == NULL);
 	RaftHeapFree(put->meta.bufs[1].base);
 	RaftHeapFree(put);
 	req->cb(req, status);
@@ -549,7 +549,7 @@ static void uvSnapshotPutAfterWorkCb(uv_work_t *work, int status)
 {
 	struct uvSnapshotPut *put = work->data;
 	struct uv *uv = put->uv;
-	assert(status == 0);
+	dqlite_assert(status == 0);
 	uv->snapshot_put_work.data = NULL;
 	uvSnapshotPutFinish(put);
 	UvUnblock(uv);
@@ -564,14 +564,14 @@ static void uvSnapshotPutStart(struct uvSnapshotPut *put)
 	/* If this is an install request, the barrier callback must have fired.
 	 */
 	if (put->trailing == 0) {
-		assert(put->barrier.data == NULL);
+		dqlite_assert(put->barrier.data == NULL);
 	}
 
 	uv->snapshot_put_work.data = put;
 	rv = uv_queue_work(uv->loop, &uv->snapshot_put_work,
 			   uvSnapshotPutWorkCb, uvSnapshotPutAfterWorkCb);
 	if (rv != 0) {
-		tracef("store snapshot %lld: %s", put->snapshot->index,
+		tracef("store snapshot %" PRIu64 ": %s", put->snapshot->index,
 		       uv_strerror(rv));
 		uv->errored = true;
 	}
@@ -598,6 +598,20 @@ static void uvSnapshotPutBarrierCb(struct UvBarrierReq *barrier)
 	uvSnapshotPutStart(put);
 }
 
+void formatSnapshotMetaHeader(void *header, raft_index index, const struct raft_buffer *content) { 
+	void *cursor = header;
+	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, 0);
+	bytePut64(&cursor, index);
+	bytePut64(&cursor, content->len);
+
+	unsigned crc = byteCrc32(header + 16, 16, 0);
+	crc = byteCrc32(content->base, content->len, crc);
+
+	cursor = header + 8;
+	bytePut64(&cursor, crc);
+}
+
 int UvSnapshotPut(struct raft_io *io,
 		  unsigned trailing,
 		  struct raft_io_snapshot_put *req,
@@ -606,8 +620,6 @@ int UvSnapshotPut(struct raft_io *io,
 {
 	struct uv *uv;
 	struct uvSnapshotPut *put;
-	void *cursor;
-	unsigned crc;
 	int rv;
 	raft_index next_index;
 
@@ -616,9 +628,9 @@ int UvSnapshotPut(struct raft_io *io,
 		return RAFT_CANCELED;
 	}
 
-	assert(uv->snapshot_put_work.data == NULL);
+	dqlite_assert(uv->snapshot_put_work.data == NULL);
 
-	tracef("put snapshot at %lld, keeping %d", snapshot->index, trailing);
+	tracef("put snapshot at %" PRIu64 ", keeping %u", snapshot->index, trailing);
 
 	put = RaftHeapMalloc(sizeof *put);
 	if (put == NULL) {
@@ -645,17 +657,7 @@ int UvSnapshotPut(struct raft_io *io,
 		goto err_after_req_alloc;
 	}
 
-	cursor = put->meta.header;
-	bytePut64(&cursor, UV__DISK_FORMAT);
-	bytePut64(&cursor, 0);
-	bytePut64(&cursor, snapshot->configuration_index);
-	bytePut64(&cursor, put->meta.bufs[1].len);
-
-	crc = byteCrc32(&put->meta.header[2], sizeof(uint64_t) * 2, 0);
-	crc = byteCrc32(put->meta.bufs[1].base, put->meta.bufs[1].len, crc);
-
-	cursor = &put->meta.header[1];
-	bytePut64(&cursor, crc);
+	formatSnapshotMetaHeader(put->meta.header, snapshot->configuration_index, &put->meta.bufs[1]);
 
 	/* - If the trailing parameter is set to 0, it means that we're
 	 * restoring a snapshot. Submit a barrier request setting the next
@@ -678,7 +680,7 @@ err_after_configuration_encode:
 err_after_req_alloc:
 	RaftHeapFree(put);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -692,7 +694,7 @@ static void uvSnapshotGetWorkCb(uv_work_t *work)
 	size_t n_segments;
 	int rv;
 	get->status = 0;
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    get->errmsg);
 	if (rv != 0) {
 		get->status = rv;
@@ -720,7 +722,7 @@ static void uvSnapshotGetAfterWorkCb(uv_work_t *work, int status)
 	struct raft_snapshot *snapshot = get->snapshot;
 	int req_status = get->status;
 	struct uv *uv = get->uv;
-	assert(status == 0);
+	dqlite_assert(status == 0);
 	queue_remove(&get->queue);
 	RaftHeapFree(get);
 	req->cb(req, snapshot, req_status);
@@ -736,7 +738,7 @@ int UvSnapshotGet(struct raft_io *io,
 	int rv;
 
 	uv = io->impl;
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	get = RaftHeapMalloc(sizeof *get);
 	if (get == NULL) {
@@ -771,7 +773,7 @@ err_after_snapshot_alloc:
 err_after_req_alloc:
 	RaftHeapFree(get);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 

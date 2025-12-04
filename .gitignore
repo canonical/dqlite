@@ -33,3 +33,5 @@ raft-uv-integration-test
 raft-uv-unit-test
 .cache/
 compile_commands.json
+contrib/build/
+contrib/prefix/

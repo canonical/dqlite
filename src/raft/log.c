@@ -2,9 +2,9 @@
 
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../raft.h"
 #include "../utils.h" /* PRE, POST */
-#include "assert.h"
 #include "configuration.h"
 
 #define A(ident) BITS(ENTRY_##ident)
@@ -37,8 +37,8 @@ static bool entry_invariant(const struct sm *sm, int prev)
  * its cap is reached). */
 static size_t refsKey(const raft_index index, const size_t size)
 {
-	assert(index > 0);
-	assert(size > 0);
+	dqlite_assert(index > 0);
+	dqlite_assert(size > 0);
 	return (size_t)((index - 1) % size);
 }
 
@@ -73,11 +73,11 @@ static struct raft_entry_ref *refsTryInsert(struct raft_entry_ref *table,
 	struct raft_entry_ref *slot;
 	size_t key;
 
-	assert(table != NULL);
-	assert(size > 0);
-	assert(term > 0);
-	assert(index > 0);
-	assert(count > 0);
+	dqlite_assert(table != NULL);
+	dqlite_assert(size > 0);
+	dqlite_assert(term > 0);
+	dqlite_assert(index > 0);
+	dqlite_assert(count > 0);
 
 	/* Calculate the hash table key for the given index. */
 	key = refsKey(index, size);
@@ -86,7 +86,7 @@ static struct raft_entry_ref *refsTryInsert(struct raft_entry_ref *table,
 	/* If a bucket is empty, then there's no collision and we can fill its
 	 * first slot. */
 	if (bucket->count == 0) {
-		assert(bucket->next == NULL);
+		dqlite_assert(bucket->next == NULL);
 		slot = bucket;
 		goto fill;
 	}
@@ -108,18 +108,18 @@ static struct raft_entry_ref *refsTryInsert(struct raft_entry_ref *table,
 	for (next_slot = bucket; next_slot != NULL;
 	     next_slot = next_slot->next) {
 		/* All entries in a bucket must have the same index. */
-		assert(next_slot->index == index);
+		dqlite_assert(next_slot->index == index);
 
 		/* It should never happen that two entries with the same index
 		 * and term get appended. So no existing slot in this bucket
 		 * must track an entry with the same term as the given one. */
-		assert(next_slot->term != term);
+		dqlite_assert(next_slot->term != term);
 
 		last_slot = next_slot;
 	}
 
 	/* The last slot must have no next slot. */
-	assert(last_slot->next == NULL);
+	dqlite_assert(last_slot->next == NULL);
 
 	slot = raft_malloc(sizeof *slot);
 	if (slot == NULL) {
@@ -149,12 +149,12 @@ static int refsMove(struct raft_entry_ref *bucket,
 	struct raft_entry_ref *slot;
 	struct raft_entry_ref *next_slot;
 
-	assert(bucket != NULL);
-	assert(table != NULL);
-	assert(size > 0);
+	dqlite_assert(bucket != NULL);
+	dqlite_assert(table != NULL);
+	dqlite_assert(size > 0);
 
 	/* Only non-empty buckets should be moved. */
-	assert(bucket->count > 0);
+	dqlite_assert(bucket->count > 0);
 
 	/* For each slot in the bucket, insert the relevant entry in the given
 	 * table, then free it. */
@@ -196,8 +196,8 @@ static int refsGrow(struct raft_log *l)
 	size_t size;                  /* Size of the new hash table. */
 	size_t i;
 
-	assert(l != NULL);
-	assert(l->refs_size > 0);
+	dqlite_assert(l != NULL);
+	dqlite_assert(l->refs_size > 0);
 
 	size = l->refs_size * 2; /* Double the table size */
 
@@ -219,7 +219,7 @@ static int refsGrow(struct raft_log *l)
 		} else {
 			/* If the count is zero, we expect that the bucket is
 			 * unused. */
-			assert(bucket->next == NULL);
+			dqlite_assert(bucket->next == NULL);
 		}
 	}
 
@@ -241,9 +241,9 @@ static struct raft_entry_ref *refsInit(struct raft_log *l,
 {
 	int i;
 
-	assert(l != NULL);
-	assert(term > 0);
-	assert(index > 0);
+	dqlite_assert(l != NULL);
+	dqlite_assert(term > 0);
+	dqlite_assert(index > 0);
 
 	/* Initialize the hash map with a reasonable size */
 	if (l->refs == NULL) {
@@ -279,7 +279,7 @@ static struct raft_entry_ref *refsInit(struct raft_log *l,
 
 		rc = refsGrow(l);
 		if (rc != 0) {
-			assert(rc == RAFT_NOMEM);
+			dqlite_assert(rc == RAFT_NOMEM);
 			return NULL;
 		}
 	};
@@ -293,15 +293,15 @@ static struct raft_entry_ref *refs_get(const struct raft_log *l,
 		     const raft_term term,
 		     const raft_index index)
 {
-	assert(l != NULL);
-	assert(term > 0);
-	assert(index > 0);
+	dqlite_assert(l != NULL);
+	dqlite_assert(term > 0);
+	dqlite_assert(index > 0);
 
 	size_t key = refsKey(index, l->refs_size);
 	struct raft_entry_ref *slot = &l->refs[key];
 	while (1) {
 		PRE(slot != NULL);
-		assert(slot->index == index);
+		dqlite_assert(slot->index == index);
 		if (slot->term == term) {
 			break;
 		}
@@ -334,9 +334,9 @@ static bool refsDecr(struct raft_log *l,
 	struct raft_entry_ref
 	    *prev_slot; /* Slot preceeding the one to decrement */
 
-	assert(l != NULL);
-	assert(term > 0);
-	assert(index > 0);
+	dqlite_assert(l != NULL);
+	dqlite_assert(term > 0);
+	dqlite_assert(index > 0);
 
 	key = refsKey(index, l->refs_size);
 	prev_slot = NULL;
@@ -345,8 +345,8 @@ static bool refsDecr(struct raft_log *l,
 	 * of its previous slot in the bucket list. */
 	slot = &l->refs[key];
 	while (1) {
-		assert(slot != NULL);
-		assert(slot->index == index);
+		dqlite_assert(slot != NULL);
+		dqlite_assert(slot->index == index);
 		if (slot->term == term) {
 			break;
 		}
@@ -433,7 +433,7 @@ void logClose(struct raft_log *l)
 {
 	void *batch = NULL; /* Last batch that has been freed */
 
-	assert(l != NULL);
+	dqlite_assert(l != NULL);
 
 	if (l->entries != NULL) {
 		size_t i;
@@ -447,12 +447,12 @@ void logClose(struct raft_log *l)
 
 			/* We require that there are no outstanding references
 			 * to active entries. */
-			assert(slot->count == 1);
+			dqlite_assert(slot->count == 1);
 			sm_fini(&slot->sm);
 
 			/* TODO: we should support the case where the bucket has
 			 * more than one slot. */
-			assert(slot->next == NULL);
+			dqlite_assert(slot->next == NULL);
 
 			/* Release the memory used by the entry data (either
 			 * directly or via a batch). */
@@ -485,10 +485,10 @@ void logStart(struct raft_log *l,
 	      raft_term snapshot_term,
 	      raft_index start_index)
 {
-	assert(logNumEntries(l) == 0);
-	assert(start_index > 0);
-	assert(start_index <= snapshot_index + 1);
-	assert(snapshot_index == 0 || snapshot_term != 0);
+	dqlite_assert(logNumEntries(l) == 0);
+	dqlite_assert(start_index > 0);
+	dqlite_assert(start_index <= snapshot_index + 1);
+	dqlite_assert(snapshot_index == 0 || snapshot_term != 0);
 	l->snapshot.last_index = snapshot_index;
 	l->snapshot.last_term = snapshot_term;
 	l->offset = start_index - 1;
@@ -596,9 +596,9 @@ int logAppend(struct raft_log *l,
 	struct raft_entry_ref *ref;
 	raft_index index;
 
-	assert(l != NULL);
-	assert(term > 0);
-	assert(type == RAFT_CHANGE || type == RAFT_BARRIER ||
+	dqlite_assert(l != NULL);
+	dqlite_assert(term > 0);
+	dqlite_assert(type == RAFT_CHANGE || type == RAFT_BARRIER ||
 	       type == RAFT_COMMAND);
 
 	rv = ensureCapacity(l);
@@ -633,9 +633,9 @@ int logAppendConfiguration(struct raft_log *l,
 	struct raft_buffer buf;
 	int rv;
 
-	assert(l != NULL);
-	assert(term > 0);
-	assert(configuration != NULL);
+	dqlite_assert(l != NULL);
+	dqlite_assert(term > 0);
+	dqlite_assert(configuration != NULL);
 
 	/* Encode the configuration into a buffer. */
 	rv = configurationEncode(configuration, &buf);
@@ -655,13 +655,13 @@ err_after_encode:
 	raft_free(buf.base);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
 size_t logNumEntries(const struct raft_log *l)
 {
-	assert(l != NULL);
+	dqlite_assert(l != NULL);
 
 	/* The circular buffer is not wrapped. */
 	if (l->front <= l->back) {
@@ -677,7 +677,7 @@ raft_index logLastIndex(const struct raft_log *l)
 	/* If there are no entries in the log, but there is a snapshot available
 	 * check that it's last index is consistent with the offset. */
 	if (logNumEntries(l) == 0 && l->snapshot.last_index != 0) {
-		assert(l->offset <= l->snapshot.last_index);
+		dqlite_assert(l->offset <= l->snapshot.last_index);
 	}
 	return l->offset + logNumEntries(l);
 }
@@ -703,8 +703,8 @@ static size_t locateEntry(const struct raft_log *l, const raft_index index)
 raft_term logTermOf(const struct raft_log *l, const raft_index index)
 {
 	size_t i;
-	assert(index > 0);
-	assert(l->offset <= l->snapshot.last_index);
+	dqlite_assert(index > 0);
+	dqlite_assert(l->offset <= l->snapshot.last_index);
 
 	if ((index < l->offset + 1 && index != l->snapshot.last_index) ||
 	    index > logLastIndex(l)) {
@@ -712,18 +712,18 @@ raft_term logTermOf(const struct raft_log *l, const raft_index index)
 	}
 
 	if (index == l->snapshot.last_index) {
-		assert(l->snapshot.last_term != 0);
+		dqlite_assert(l->snapshot.last_term != 0);
 		/* Coherence check that if we still have the entry at
 		 * last_index, its term matches the one in the snapshot. */
 		i = locateEntry(l, index);
 		if (i != l->size) {
-			assert(l->entries[i].term == l->snapshot.last_term);
+			dqlite_assert(l->entries[i].term == l->snapshot.last_term);
 		}
 		return l->snapshot.last_term;
 	}
 
 	i = locateEntry(l, index);
-	assert(i < l->size);
+	dqlite_assert(i < l->size);
 	return l->entries[i].term;
 }
 
@@ -743,7 +743,7 @@ const struct raft_entry *logGet(const struct raft_log *l, const raft_index index
 {
 	size_t i;
 
-	assert(l != NULL);
+	dqlite_assert(l != NULL);
 
 	/* Get the array index of the desired entry. */
 	i = locateEntry(l, index);
@@ -751,7 +751,7 @@ const struct raft_entry *logGet(const struct raft_log *l, const raft_index index
 		return NULL;
 	}
 
-	assert(i < l->size);
+	dqlite_assert(i < l->size);
 
 	return &l->entries[i];
 }
@@ -772,10 +772,10 @@ int logAcquire(struct raft_log *l,
 	size_t i;
 	size_t j;
 
-	assert(l != NULL);
-	assert(index > 0);
-	assert(entries != NULL);
-	assert(n != NULL);
+	dqlite_assert(l != NULL);
+	dqlite_assert(index > 0);
+	dqlite_assert(entries != NULL);
+	dqlite_assert(n != NULL);
 
 	/* Get the array index of the first entry to acquire. */
 	i = locateEntry(l, index);
@@ -798,7 +798,7 @@ int logAcquire(struct raft_log *l,
 		*n = (unsigned)(l->size - i + l->back);
 	}
 
-	assert(*n > 0);
+	dqlite_assert(*n > 0);
 
 	*entries = raft_calloc(*n, sizeof **entries);
 	if (*entries == NULL) {
@@ -842,8 +842,8 @@ void logRelease(struct raft_log *l,
 	size_t i;
 	void *batch = NULL; /* Last batch whose memory was freed */
 
-	assert(l != NULL);
-	assert((entries == NULL && n == 0) || (entries != NULL && n > 0));
+	dqlite_assert(l != NULL);
+	dqlite_assert((entries == NULL && n == 0) || (entries != NULL && n > 0));
 
 	for (i = 0; i < n; i++) {
 		struct raft_entry *entry = &entries[i];
@@ -914,9 +914,9 @@ static void removeSuffix(struct raft_log *l,
 	size_t n;
 	raft_index start = index;
 
-	assert(l != NULL);
-	assert(index > l->offset);
-	assert(index <= logLastIndex(l));
+	dqlite_assert(l != NULL);
+	dqlite_assert(index > l->offset);
+	dqlite_assert(index <= logLastIndex(l));
 
 	/* Number of entries to delete */
 	n = (size_t)(logLastIndex(l) - start) + 1;
@@ -961,9 +961,9 @@ static void removePrefix(struct raft_log *l, const raft_index index)
 	size_t i;
 	size_t n;
 
-	assert(l != NULL);
-	assert(index > 0);
-	assert(index <= logLastIndex(l));
+	dqlite_assert(l != NULL);
+	dqlite_assert(index > 0);
+	dqlite_assert(index <= logLastIndex(l));
 
 	/* Number of entries to delete */
 	n = (size_t)(index - indexAt(l, 0)) + 1;
@@ -996,7 +996,7 @@ void logSnapshot(struct raft_log *l, raft_index last_index, unsigned trailing)
 	raft_term last_term = logTermOf(l, last_index);
 
 	/* We must have an entry at this index */
-	assert(last_term != 0);
+	dqlite_assert(last_term != 0);
 
 	l->snapshot.last_index = last_index;
 	l->snapshot.last_term = last_term;
@@ -1014,8 +1014,8 @@ void logSnapshot(struct raft_log *l, raft_index last_index, unsigned trailing)
 void logRestore(struct raft_log *l, raft_index last_index, raft_term last_term)
 {
 	size_t n = logNumEntries(l);
-	assert(last_index > 0);
-	assert(last_term > 0);
+	dqlite_assert(last_index > 0);
+	dqlite_assert(last_term > 0);
 	if (n > 0) {
 		removeSuffix(l, logLastIndex(l) - n + 1, true, ENTRY_REPLACED);
 	}

@@ -1,7 +1,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "heap.h"
 #include "uv.h"
 #include "uv_os.h"
@@ -68,7 +68,7 @@ static void uvPrepareWorkCb(uv_work_t *work)
 err_after_allocate:
 	UvOsClose(segment->fd);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	segment->status = rv;
 	return;
 }
@@ -96,7 +96,7 @@ static void uvPrepareConsume(struct uv *uv, uv_file *fd, uvCounter *counter)
 	/* Pop a segment from the pool. */
 	head = queue_head(&uv->prepare_pool);
 	segment = QUEUE_DATA(head, struct uvIdleSegment, queue);
-	assert(segment->fd >= 0);
+	dqlite_assert(segment->fd >= 0);
 	queue_remove(&segment->queue);
 	*fd = segment->fd;
 	*counter = segment->counter;
@@ -110,9 +110,9 @@ static void uvPrepareFinishOldestRequest(struct uv *uv)
 	queue *head;
 	struct uvPrepare *req;
 
-	assert(!uv->closing);
-	assert(!queue_empty(&uv->prepare_reqs));
-	assert(!queue_empty(&uv->prepare_pool));
+	dqlite_assert(!uv->closing);
+	dqlite_assert(!queue_empty(&uv->prepare_reqs));
+	dqlite_assert(!queue_empty(&uv->prepare_pool));
 
 	/* Pop the head of the prepare requests queue. */
 	head = queue_head(&uv->prepare_reqs);
@@ -145,8 +145,8 @@ static int uvPrepareStart(struct uv *uv)
 	struct uvIdleSegment *segment;
 	int rv;
 
-	assert(uv->prepare_inflight == NULL);
-	assert(uvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
+	dqlite_assert(uv->prepare_inflight == NULL);
+	dqlite_assert(uvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
 
 	segment = RaftHeapMalloc(sizeof *segment);
 	if (segment == NULL) {
@@ -182,7 +182,7 @@ static int uvPrepareStart(struct uv *uv)
 err_after_segment_alloc:
 	RaftHeapFree(segment);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -191,7 +191,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	struct uvIdleSegment *segment = work->data;
 	struct uv *uv = segment->uv;
 	int rv;
-	assert(status == 0);
+	dqlite_assert(status == 0);
 
 	uv->prepare_inflight =
 	    NULL; /* Reset the creation in-progress marker. */
@@ -199,8 +199,8 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	/* If we are closing, let's discard the segment. All pending requests
 	 * have already being fired with RAFT_CANCELED. */
 	if (uv->closing) {
-		assert(queue_empty(&uv->prepare_pool));
-		assert(queue_empty(&uv->prepare_reqs));
+		dqlite_assert(queue_empty(&uv->prepare_pool));
+		dqlite_assert(queue_empty(&uv->prepare_reqs));
 		if (segment->status == 0) {
 			char errmsg[RAFT_ERRMSG_BUF_SIZE];
 			UvOsClose(segment->fd);
@@ -228,7 +228,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 		return;
 	}
 
-	assert(segment->fd >= 0);
+	dqlite_assert(segment->fd >= 0);
 
 	tracef("completed creation of %s", segment->filename);
 	queue_insert_tail(&uv->prepare_pool, &segment->queue);
@@ -249,7 +249,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	 * above, thus reducing the pool size and making it smaller than the
 	 * target size. */
 	if (uvPrepareCount(uv) >= UV__TARGET_POOL_SIZE) {
-		assert(queue_empty(&uv->prepare_reqs));
+		dqlite_assert(queue_empty(&uv->prepare_reqs));
 		return;
 	}
 
@@ -267,8 +267,8 @@ static void uvPrepareDiscard(struct uv *uv, uv_file fd, uvCounter counter)
 {
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 	char filename[UV__FILENAME_LEN];
-	assert(counter > 0);
-	assert(fd >= 0);
+	dqlite_assert(counter > 0);
+	dqlite_assert(fd >= 0);
 	sprintf(filename, UV__OPEN_TEMPLATE, counter);
 	UvOsClose(fd);
 	UvFsRemoveFile(uv->dir, filename, errmsg);
@@ -282,7 +282,7 @@ int UvPrepare(struct uv *uv,
 {
 	int rv;
 
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	if (!queue_empty(&uv->prepare_pool)) {
 		uvPrepareConsume(uv, fd, counter);
@@ -313,13 +313,13 @@ err:
 	} else {
 		queue_remove(&req->queue);
 	}
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
 void UvPrepareClose(struct uv *uv)
 {
-	assert(uv->closing);
+	dqlite_assert(uv->closing);
 
 	/* Cancel all pending prepare requests. */
 	uvPrepareFinishAllRequests(uv, RAFT_CANCELED);

@@ -2,16 +2,15 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "../lib/assert.h"
+#include "../raft.h"
+#include "../raft/recv_install_snapshot.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "convert.h"
 #include "flags.h"
 #include "log.h"
 #include "recv.h"
 #include "replication.h"
-
-#include "../raft.h"
-#include "../raft/recv_install_snapshot.h"
 
 static void installSnapshotSendCb(struct raft_io_send *req, int status)
 {
@@ -32,11 +31,10 @@ int recvInstallSnapshot(struct raft *r,
 	int match;
 	bool async;
 
-	assert(address != NULL);
+	dqlite_assert(address != NULL);
 	tracef(
-	    "self:%llu from:%llu@%s conf_index:%llu last_index:%llu "
-	    "last_term:%llu "
-	    "term:%llu",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s conf_index: %" PRIu64 " last_index: %" PRIu64
+	    " last_term: %" PRIu64 " term: %" PRIu64,
 	    r->id, id, address, args->conf_index, args->last_index,
 	    args->last_term, args->term);
 
@@ -56,10 +54,10 @@ int recvInstallSnapshot(struct raft *r,
 	}
 
 	/* TODO: this logic duplicates the one in the AppendEntries handler */
-	assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
-	assert(r->current_term == args->term);
+	dqlite_assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
+	dqlite_assert(r->current_term == args->term);
 	if (r->state == RAFT_CANDIDATE) {
-		assert(match == 0);
+		dqlite_assert(match == 0);
 		tracef("discovered leader -> step down ");
 		convertToFollower(r);
 	}

@@ -1,5 +1,6 @@
 #include "../raft.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,9 +11,9 @@
 #include <unistd.h>
 #include <uv.h>
 
+#include "../lib/assert.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "byte.h"
 #include "configuration.h"
 #include "entry.h"
@@ -47,7 +48,7 @@ static int uvMaintenance(const char *dir, char *errmsg)
 	for (i = 0; i < n; i++) {
 		const char *filename;
 		rv = uv_fs_scandir_next(&req, &entry);
-		assert(rv == 0); /* Can't fail in libuv */
+		dqlite_assert(rv == 0); /* Can't fail in libuv */
 
 		filename = entry.name;
 		/* Remove leftover tmp-files */
@@ -76,7 +77,7 @@ static int uvMaintenance(const char *dir, char *errmsg)
 	}
 
 	rv2 = uv_fs_scandir_next(&req, &entry);
-	assert(rv2 == UV_EOF);
+	dqlite_assert(rv2 == UV_EOF);
 	return rv;
 }
 
@@ -123,7 +124,7 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
 	uv->transport->data = uv;
 
 	rv = uv_timer_init(uv->loop, &uv->timer);
-	assert(rv == 0); /* This should never fail */
+	dqlite_assert(rv == 0); /* This should never fail */
 	uv->timer.data = uv;
 
 	return 0;
@@ -156,7 +157,7 @@ static int uvStart(struct raft_io *io,
 		return rv;
 	}
 	rv = uv_timer_start(&uv->timer, uvTickTimerCb, msecs, msecs);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	return 0;
 }
 
@@ -201,7 +202,7 @@ void uvMaybeFireCloseCb(struct uv *uv)
 		return;
 	}
 
-	assert(uv->truncate_work.data == NULL);
+	dqlite_assert(uv->truncate_work.data == NULL);
 
 	if (uv->close_cb != NULL) {
 		uv->close_cb(uv->io);
@@ -211,7 +212,7 @@ void uvMaybeFireCloseCb(struct uv *uv)
 static void uvTickTimerCloseCb(uv_handle_t *handle)
 {
 	struct uv *uv = handle->data;
-	assert(uv->closing);
+	dqlite_assert(uv->closing);
 	uv->timer.data = NULL;
 	uvMaybeFireCloseCb(uv);
 }
@@ -219,7 +220,7 @@ static void uvTickTimerCloseCb(uv_handle_t *handle)
 static void uvTransportCloseCb(struct raft_uv_transport *transport)
 {
 	struct uv *uv = transport->data;
-	assert(uv->closing);
+	dqlite_assert(uv->closing);
 	uv->transport->data = NULL;
 	uvMaybeFireCloseCb(uv);
 }
@@ -229,8 +230,8 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
 {
 	struct uv *uv;
 	uv = io->impl;
-	assert(uv != NULL);
-	assert(!uv->closing);
+	dqlite_assert(uv != NULL);
+	dqlite_assert(!uv->closing);
 	uv->close_cb = cb;
 	uv->closing = true;
 	UvSendClose(uv);
@@ -270,7 +271,7 @@ static int uvFilterSegments(struct uv *uv,
 			break;
 		}
 	}
-	assert(j > 0);
+	dqlite_assert(j > 0);
 	j--;
 
 	segment = &(*segments)[j];
@@ -368,7 +369,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 	*n = 0;
 
 	/* List available snapshots and segments. */
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    uv->io->errmsg);
 	if (rv != 0) {
 		tracef("failed to list snapshots and segments, error: %d", rv);
@@ -394,7 +395,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		}
 		uvSnapshotFilenameOf(&snapshots[n_snapshots - 1],
 				     snapshot_filename);
-		tracef("most recent snapshot at %lld", (*snapshot)->index);
+		tracef("most recent snapshot at %" PRIu64, (*snapshot)->index);
 		RaftHeapFree(snapshots);
 		snapshots = NULL;
 
@@ -438,9 +439,9 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		last_index = *start_index + *n - 1;
 		if (*snapshot != NULL && last_index < (*snapshot)->index) {
 			ErrMsgPrintf(uv->io->errmsg,
-				     "last entry on disk has index %llu, which "
+				     "last entry on disk has index %" PRIu64 ", which "
 				     "is behind "
-				     "last snapshot's index %llu",
+				     "last snapshot's index %" PRIu64,
 				     last_index, (*snapshot)->index);
 			rv = RAFT_CORRUPT;
 			goto err;
@@ -453,7 +454,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	tracef("auto-recovery: %d, load depth: %d, error: %s",
 		   uv->auto_recovery, depth, uv->io->errmsg);
 
@@ -505,7 +506,7 @@ static int uvLoad(struct raft_io *io,
 	if (rv != 0) {
 		return rv;
 	}
-	tracef("start index %lld, %zu entries", *start_index, *n_entries);
+	tracef("start index %" PRIu64 ", %" PRIu64 " entries", *start_index, (uint64_t)*n_entries);
 	if (*snapshot == NULL) {
 		tracef("no snapshot");
 	}
@@ -525,7 +526,7 @@ static int uvSetTerm(struct raft_io *io, const raft_term term)
 	uv->metadata.version++;
 	uv->metadata.term = term;
 	uv->metadata.voted_for = 0;
-	rv = uvMetadataStore(uv, &uv->metadata);
+	rv = uvMetadataStore(uv->dir, &uv->metadata, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}
@@ -540,7 +541,7 @@ static int uvSetVote(struct raft_io *io, const raft_id server_id)
 	uv = io->impl;
 	uv->metadata.version++;
 	uv->metadata.voted_for = server_id;
-	rv = uvMetadataStore(uv, &uv->metadata);
+	rv = uvMetadataStore(uv->dir, &uv->metadata, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}
@@ -557,7 +558,7 @@ static int uvBootstrap(struct raft_io *io,
 
 	/* We shouldn't have written anything else yet. */
 	if (uv->metadata.term != 0) {
-		ErrMsgPrintf(io->errmsg, "metadata contains term %lld",
+		ErrMsgPrintf(io->errmsg, "metadata contains term %" PRIu64,
 			     uv->metadata.term);
 		return RAFT_CANTBOOTSTRAP;
 	}
@@ -605,7 +606,7 @@ static int uvRecover(struct raft_io *io, const struct raft_configuration *conf)
 		entryBatchesDestroy(entries, n_entries);
 	}
 
-	assert(start_index > 0);
+	dqlite_assert(start_index > 0);
 	next_index = start_index + n_entries;
 
 	rv = uvSegmentCreateClosedWithConfiguration(uv, next_index, conf);
@@ -662,10 +663,10 @@ int raft_uv_init(struct raft_io *io,
 	void *data;
 	int rv;
 
-	assert(io != NULL);
-	assert(loop != NULL);
-	assert(dir != NULL);
-	assert(transport != NULL);
+	dqlite_assert(io != NULL);
+	dqlite_assert(loop != NULL);
+	dqlite_assert(dir != NULL);
+	dqlite_assert(transport != NULL);
 
 	data = io->data;
 	memset(io, 0, sizeof *io);
@@ -763,7 +764,7 @@ int raft_uv_init(struct raft_io *io,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	if (rv == RAFT_NOMEM) {
 		ErrMsgOom(io->errmsg);
 	}

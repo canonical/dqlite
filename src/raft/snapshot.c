@@ -3,8 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "err.h"
 
@@ -28,11 +28,11 @@ int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot)
 {
 	int rv;
 
-	assert(snapshot->n_bufs == 1);
+	dqlite_assert(snapshot->n_bufs == 1);
 
 	rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
 	if (rv != 0) {
-		tracef("restore snapshot %llu: %s", snapshot->index,
+		tracef("restore snapshot %" PRIu64 ": %s", snapshot->index,
 		       errCodeToString(rv));
 		return rv;
 	}
@@ -90,7 +90,7 @@ int snapshotCopy(const struct raft_snapshot *src, struct raft_snapshot *dst)
 	}
 
 	dst->bufs = raft_malloc(sizeof *dst->bufs);
-	assert(dst->bufs != NULL);
+	dqlite_assert(dst->bufs != NULL);
 
 	dst->bufs[0].base = raft_malloc(size);
 	dst->bufs[0].len = size;

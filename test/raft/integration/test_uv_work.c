@@ -1,9 +1,9 @@
 #include <unistd.h>
 
 #include "../../../src/raft/uv.h"
+#include "../../lib/runner.h"
 #include "../lib/dir.h"
 #include "../lib/loop.h"
-#include "../lib/runner.h"
 #include "../lib/uv.h"
 
 /******************************************************************************

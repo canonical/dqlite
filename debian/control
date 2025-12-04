@@ -6,7 +6,8 @@ Build-Depends: debhelper (>= 10),
                pkgconf,
                libsqlite3-dev,
                libuv1-dev,
-               liblz4-dev
+               liblz4-dev,
+               xfslibs-dev
 Homepage: https://github.com/canonical/dqlite
 Standards-Version: 4.5.1
 Rules-Requires-Root: no

@@ -73,22 +73,22 @@ enum {
  */
 RAFT_API const char *raft_strerror(int errnum);
 
-typedef unsigned long long raft_id;
+typedef uint64_t raft_id;
 
 /**
  * Hold the value of a raft term. Guaranteed to be at least 64-bit long.
  */
-typedef unsigned long long raft_term;
+typedef uint64_t raft_term;
 
 /**
  * Hold the value of a raft entry index. Guaranteed to be at least 64-bit long.
  */
-typedef unsigned long long raft_index;
+typedef uint64_t raft_index;
 
 /**
  * Hold a time value expressed in milliseconds since the epoch.
  */
-typedef unsigned long long raft_time;
+typedef uint64_t raft_time;
 
 /**
  * Hold the features a raft node is capable of.
@@ -756,11 +756,6 @@ struct raft_fsm
 struct raft; /* Forward declaration. */
 
 /**
- * State codes.
- */
-enum { RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER };
-
-/**
  * State callback to invoke if raft's state changes.
  */
 typedef void (*raft_state_cb)(struct raft *raft,
@@ -806,12 +801,50 @@ enum {
 };
 
 /**
+ * State codes.
+ */
+enum raft_state {
+	RAFT_UNAVAILABLE,
+	RAFT_FOLLOWER,
+	RAFT_CANDIDATE,
+	RAFT_LEADER
+};
+
+struct raft_follower_state {
+	unsigned randomized_election_timeout; /* Timer expiration. */
+	struct                                /* Current leader info. */
+	{
+		raft_id id;
+		char *address;
+	} current_leader;
+	uint64_t append_in_flight_count;
+};
+
+struct raft_candidate_state {
+	unsigned randomized_election_timeout; /* Timer expiration. */
+	bool *votes;                          /* Vote results. */
+	bool disrupt_leader;                  /* For leadership transfer */
+	bool in_pre_vote;                     /* True in pre-vote phase. */
+};
+
+struct raft_leader_state {
+	struct raft_progress *progress; /* Per-server replication state. */
+	struct raft_change *change;     /* Pending membership change. */
+	raft_id promotee_id;            /* ID of server being promoted. */
+	unsigned short round_number;    /* Current sync round. */
+	raft_index round_index;         /* Target of the current round. */
+	raft_time round_start;          /* Start of current round. */
+	queue requests;                 /* Outstanding client requests. */
+	uint32_t voter_contacts;        /* Current number of voting nodes we
+						are in contact with */
+};
+
+/**
  * Hold and drive the state of a single raft server in a cluster.
  * When replacing reserved fields in the middle of this struct, you MUST use a
  * type with the same size and alignment requirements as the original type.
  */
-struct raft
-{
+struct raft {
 	void *data;                 /* Custom user data. */
 	struct raft_tracer *tracer; /* Tracer implementation. */
 	struct raft_io *io;         /* Disk and network I/O implementation. */
@@ -941,45 +974,9 @@ struct raft
 	 */
 	unsigned short state;
 	union {
-		struct /* Follower */
-		{
-			unsigned
-			    randomized_election_timeout; /* Timer expiration. */
-			struct /* Current leader info. */
-			{
-				raft_id id;
-				char *address;
-			} current_leader;
-			uint64_t append_in_flight_count;
-			uint64_t reserved[7]; /* Future use */
-		} follower_state;
-		struct
-		{
-			unsigned
-			    randomized_election_timeout; /* Timer expiration. */
-			bool *votes;                     /* Vote results. */
-			bool disrupt_leader;  /* For leadership transfer */
-			bool in_pre_vote;     /* True in pre-vote phase. */
-			uint64_t reserved[8]; /* Future use */
-		} candidate_state;
-		struct
-		{
-			struct raft_progress
-			    *progress; /* Per-server replication state. */
-			struct raft_change
-			    *change;         /* Pending membership change. */
-			raft_id promotee_id; /* ID of server being promoted. */
-			unsigned short round_number; /* Current sync round. */
-			raft_index
-			    round_index; /* Target of the current round. */
-			raft_time round_start; /* Start of current round. */
-			queue requests; /* Outstanding client requests. */
-			uint32_t
-			    voter_contacts; /* Current number of voting nodes we
-					       are in contact with */
-			uint32_t reserved2; /* Future use */
-			uint64_t reserved[7]; /* Future use */
-		} leader_state;
+		struct raft_follower_state follower_state;
+		struct raft_candidate_state candidate_state;
+		struct raft_leader_state leader_state;
 	};
 
 	/* Election timer start.
@@ -998,8 +995,7 @@ struct raft
 	/*
 	 * Information about the last snapshot that was taken (if any).
 	 */
-	struct
-	{
+	struct {
 		unsigned threshold; /* N. of entries before snapshot */
 		unsigned trailing;  /* N. of trailing entries to retain */
 		struct raft_snapshot pending;    /* In progress snapshot */

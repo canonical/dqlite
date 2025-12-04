@@ -1,6 +1,6 @@
 #include <sqlite3.h>
 
-#include "assert.h"
+#include "lib/assert.h"
 #include "tuple.h"
 
 /* Return the tuple header size in bytes, for a tuple of @n values.
@@ -35,7 +35,7 @@ static size_t calc_header_size(unsigned long n, int format)
 			size -= 4;
 			break;
 		default:
-			assert(0);
+			dqlite_assert(0);
 	}
 
 	return size;
@@ -52,10 +52,10 @@ int tuple_decoder__init(struct tuple_decoder *d,
 	int rc = 0;
 
 	if (format == TUPLE__ROW) {
-		assert(n > 0);
+		dqlite_assert(n > 0);
 		d->n = n;
 	} else {
-		assert(n == 0);
+		dqlite_assert(n == 0);
 		if (cursor->cap == 0) {
 			d->n = 0;
 			d->i = 0;
@@ -68,7 +68,7 @@ int tuple_decoder__init(struct tuple_decoder *d,
 			rc = uint32__decode(cursor, &val);
 			d->n = val;
 		} else {
-			assert(0);
+			dqlite_assert(0);
 		}
 	} 
 
@@ -102,7 +102,7 @@ unsigned long tuple_decoder__n(struct tuple_decoder *d)
 
 unsigned long tuple_decoder__remaining(struct tuple_decoder *d)
 {
-	assert(d->n >= d->i);
+	dqlite_assert(d->n >= d->i);
 	return d->n - d->i;
 }
 
@@ -130,7 +130,7 @@ static int get_type(struct tuple_decoder *d, unsigned long i)
 int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 {
 	int rc;
-	assert(d->i < d->n);
+	dqlite_assert(d->i < d->n);
 	value->type = get_type(d, d->i);
 	switch (value->type) {
 		case SQLITE_INTEGER:
@@ -188,7 +188,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	/* When encoding a tuple of parameters, we need to write the
 	 * number of values at the beginning of the header. */
 	if (e->format == TUPLE__PARAMS) {
-		assert(n <= UINT8_MAX);
+		dqlite_assert(n <= UINT8_MAX);
 		uint8_t *header = buffer__advance(buffer, 1);
 		if (header == NULL) {
 			return DQLITE_NOMEM;
@@ -196,7 +196,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 		header[0] = (uint8_t)n;
 	} else if (e->format == TUPLE__PARAMS32) {
 		uint32_t val = (uint32_t)n;
-		assert((unsigned long long)val == (unsigned long long)n);
+		dqlite_assert((unsigned long long)val == (unsigned long long)n);
 		char *header = buffer__advance(buffer, 4);
 		if (header == NULL) {
 			return DQLITE_NOMEM;
@@ -244,7 +244,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 	char *cursor;
 	size_t size;
 
-	assert(e->i < e->n);
+	dqlite_assert(e->i < e->n);
 
 	set_type(e, e->i, value->type);
 
@@ -275,7 +275,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			size = uint64__sizeof(&value->boolean);
 			break;
 		default:
-			assert(0);
+			dqlite_assert(0);
 	};
 
 	/* Advance the buffer write pointer. */

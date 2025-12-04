@@ -6,10 +6,10 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "munit.h"
+#include <unistd.h>
 
 #include "../../src/tracing.h"
+#include "munit.h"
 
 /* Top-level suites array declaration.
  *
@@ -23,24 +23,118 @@ extern int _main_suites_n;
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
 
-static inline void log_sqlite_error(void *arg, int e, const char *msg)
-{
-	(void)arg;
-	fprintf(stderr, "SQLITE %d %s\n", e, msg);
-}
+#ifdef DQLITE_ASSERT_WITH_BACKTRACE
+
+#if defined(HAVE_BACKTRACE_H)
+#include <backtrace.h>
+#include <stdio.h>
+
+#define PRINT_BACKTRACE(SKIP)                                            \
+	do {                                                             \
+		struct backtrace_state *state_;                          \
+		state_ = backtrace_create_state(NULL, SKIP, NULL, NULL); \
+		backtrace_print(state_, 0, stderr);                      \
+		dqlite_print_crash_trace(STDERR_FILENO);                 \
+	} while (0)
+
+#elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
+#include <execinfo.h>
+
+#define PRINT_BACKTRACE(SKIP)                                             \
+	do {                                                              \
+		void *buffer[100];                                        \
+		int nptrs = backtrace(buffer, 100);                       \
+		if (nptrs > SKIP) {                                       \
+			backtrace_symbols_fd(buffer + SKIP, nptrs - SKIP, \
+					     STDERR_FILENO);              \
+		}                                                         \
+		dqlite_print_crash_trace(STDERR_FILENO);                  \
+	} while (0)
+
+#elif defined(HAVE_LIBUNWIND_H)
+#include <libunwind.h>
+#include <stdio.h>
+
+#define PRINT_BACKTRACE(SKIP)                                            \
+	do {                                                             \
+		unw_cursor_t cursor;                                     \
+		unw_context_t context;                                   \
+		unw_getcontext(&context);                                \
+		unw_init_local(&cursor, &context);                       \
+                                                                         \
+		int skip = SKIP;                                         \
+		while (unw_step(&cursor) > 0) {                          \
+			if (skip > 0) {                                  \
+				skip--;                                  \
+				continue;                                \
+			}                                                \
+                                                                         \
+			unw_word_t offset, pc;                           \
+			char sym[256];                                   \
+                                                                         \
+			unw_get_reg(&cursor, UNW_REG_IP, &pc);           \
+			if (pc == 0) {                                   \
+				break;                                   \
+			}                                                \
+			fprintf(stderr, "0x%lx: ", (long)pc);            \
+                                                                         \
+			if (unw_get_proc_name(&cursor, sym, sizeof(sym), \
+					      &offset) == 0) {           \
+				fprintf(stderr, "(%s+0x%lx)\n", sym,     \
+					(long)offset);                   \
+			} else {                                         \
+				fprintf(stderr, "??\n");                 \
+			}                                                \
+		}                                                        \
+		dqlite_print_crash_trace(STDERR_FILENO);                 \
+	} while (0)
+
+#else
+# error "backtrace enabled, but no library to support it"
+#endif /* HAVE_EXECINFO_H */
+
+#else
+
+#define PRINT_BACKTRACE(SKIP) do {} while (0)
+
+#endif /* DQLITE_ASSERT_WITH_BACKTRACE */
 
 /* Define the top-level suites array and the main() function of the test. */
-#define RUNNER(NAME)                                                       \
-	MunitSuite _main_suites[SUITE__CAP];                               \
-	int _main_suites_n = 0;                                            \
-                                                                           \
-	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])            \
-	{                                                                  \
-		signal(SIGPIPE, SIG_IGN);                                  \
-		dqliteTracingMaybeEnable(true);                            \
-		sqlite3_config(SQLITE_CONFIG_LOG, log_sqlite_error, NULL); \
-		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
-		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
+#define RUNNER(NAME)                                                          \
+	/* This overrides the weak symbol defined in assert.h and will remove \
+	 * any diagnostic printed by dqlite by default. This way tests can    \
+	 * provide a global `SIGABRT` hook that will also print a trace in    \
+	 * case an assert is triggered by another library (libuv, liblz4,     \
+	 * libsqlite3) and provide useful diagnositcs there as well. */       \
+	void dqlite_fail(const char *__assertion, const char *__file,         \
+			 unsigned int __line, const char *__function)         \
+	{                                                                     \
+		__assert_fail(__assertion, __file, __line, __function);       \
+	}                                                                     \
+                                                                              \
+	static void print_backtrace(int sig)                                  \
+	{                                                                     \
+		(void)sig;                                                    \
+		/* Prevent recursive printing of backtrace in case printing   \
+		 * raises a signal (because of a bug?) */                     \
+		static bool printing = false;                                 \
+		if (!printing) {                                              \
+			printing = true;                                      \
+			PRINT_BACKTRACE(3);                                   \
+			printing = false;                                     \
+		}                                                             \
+	}                                                                     \
+                                                                              \
+	MunitSuite _main_suites[SUITE__CAP];                                  \
+	int _main_suites_n = 0;                                               \
+                                                                              \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])               \
+	{                                                                     \
+		signal(SIGPIPE, SIG_IGN);                                     \
+		signal(SIGABRT, print_backtrace);                             \
+		dqliteTracingMaybeEnable(true);                               \
+		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
 	}
 
 /* Declare and register a new test suite #S belonging to the file's test module.

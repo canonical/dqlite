@@ -1,10 +1,10 @@
-#include "assert.h"
+#include "../lib/assert.h"
+#include "../lib/queue.h"
 #include "byte.h"
 #include "heap.h"
-#include "../lib/queue.h"
-#include "uv.h"
 #include "uv_encoding.h"
 #include "uv_writer.h"
+#include "uv.h"
 
 /* The happy path for an append request is:
  *
@@ -154,10 +154,10 @@ static void uvAppendFinishRequestsInQueue(struct uv *uv, queue *q, int status)
 		/* Rollback the append next index if the result was
 		 * unsuccessful. */
 		if (status != 0) {
-			tracef("rollback uv->append_next_index was:%llu",
+			tracef("rollback uv->append_next_index was: %" PRIu64,
 			       uv->append_next_index);
 			uv->append_next_index -= append->n;
-			tracef("rollback uv->append_next_index now:%llu",
+			tracef("rollback uv->append_next_index now: %" PRIu64,
 			       uv->append_next_index);
 		}
 		queue_remove(head);
@@ -205,7 +205,7 @@ static int uvAliveSegmentEncodeEntriesToWriteBuf(struct uvAliveSegment *segment,
 						 struct uvAppend *append)
 {
 	int rv;
-	assert(append->segment == segment);
+	dqlite_assert(append->segment == segment);
 
 	/* If this is the very first write to the segment, we need to include
 	 * the format version */
@@ -235,10 +235,10 @@ static void uvAliveSegmentWriteCb(struct UvWriterReq *write, const int status)
 	unsigned n_blocks;
 	int rv;
 
-	assert(uv->state != UV__CLOSED);
+	dqlite_assert(uv->state != UV__CLOSED);
 
-	assert(s->buf.len % uv->block_size == 0);
-	assert(s->buf.len >= uv->block_size);
+	dqlite_assert(s->buf.len % uv->block_size == 0);
+	dqlite_assert(s->buf.len >= uv->block_size);
 
 	/* Check if the write was successful. */
 	if (status != 0) {
@@ -280,14 +280,14 @@ static void uvAliveSegmentWriteCb(struct UvWriterReq *write, const int status)
 			      uv->block_size); /* Number of blocks written. */
 	if (s->pending.n < uv->block_size) {
 		/* Nothing to do */
-		assert(n_blocks == 1);
+		dqlite_assert(n_blocks == 1);
 	} else if (s->pending.n == uv->block_size) {
-		assert(n_blocks == 1);
+		dqlite_assert(n_blocks == 1);
 		s->next_block++;
 		uvSegmentBufferReset(&s->pending, 0);
 	} else {
-		assert(s->pending.n > uv->block_size);
-		assert(s->buf.len > uv->block_size);
+		dqlite_assert(s->pending.n > uv->block_size);
+		dqlite_assert(s->buf.len > uv->block_size);
 
 		if (s->pending.n % uv->block_size > 0) {
 			s->next_block += n_blocks - 1;
@@ -323,8 +323,8 @@ out:
 	/* During the closing sequence we should have already canceled all
 	 * pending request. */
 	if (uv->closing) {
-		assert(queue_empty(&uv->append_pending_reqs));
-		assert(s->finalize);
+		dqlite_assert(queue_empty(&uv->append_pending_reqs));
+		dqlite_assert(s->finalize);
 		uvAliveSegmentFinalize(s);
 		return;
 	}
@@ -352,8 +352,8 @@ out:
 static int uvAliveSegmentWrite(struct uvAliveSegment *s)
 {
 	int rv;
-	assert(s->counter != 0);
-	assert(s->pending.n > 0);
+	dqlite_assert(s->counter != 0);
+	dqlite_assert(s->pending.n > 0);
 	uvSegmentBufferFinalize(&s->pending, &s->buf);
 	rv = UvWriterSubmit(&s->writer, &s->write, &s->buf, 1,
 			    s->next_block * s->uv->block_size,
@@ -378,8 +378,8 @@ static int uvAppendMaybeStart(struct uv *uv)
 	queue q;
 	int rv;
 
-	assert(!uv->closing);
-	assert(!queue_empty(&uv->append_pending_reqs));
+	dqlite_assert(!uv->closing);
+	dqlite_assert(!queue_empty(&uv->append_pending_reqs));
 
 	/* If we are already writing, let's wait. */
 	if (!queue_empty(&uv->append_writing_reqs)) {
@@ -388,7 +388,7 @@ static int uvAppendMaybeStart(struct uv *uv)
 
 start:
 	segment = uvGetCurrentAliveSegment(uv);
-	assert(segment != NULL);
+	dqlite_assert(segment != NULL);
 	/* If the preparer isn't done yet, let's wait. */
 	if (segment->counter == 0) {
 		return 0;
@@ -419,7 +419,7 @@ start:
 	while (!queue_empty(&uv->append_pending_reqs)) {
 		head = queue_head(&uv->append_pending_reqs);
 		append = QUEUE_DATA(head, struct uvAppend, queue);
-		assert(append->segment != NULL);
+		dqlite_assert(append->segment != NULL);
 		if (append->segment != segment) {
 			break; /* Not targeted to this segment */
 		}
@@ -440,14 +440,14 @@ start:
 	 * request, in that case we need to wait for it). Otherwise it must mean
 	 * we have exhausted the queue of pending append requests. */
 	if (n_reqs == 0) {
-		assert(queue_empty(&uv->append_writing_reqs));
+		dqlite_assert(queue_empty(&uv->append_writing_reqs));
 		if (segment->finalize) {
 			uvAliveSegmentFinalize(segment);
 			if (!queue_empty(&uv->append_pending_reqs)) {
 				goto start;
 			}
 		}
-		assert(queue_empty(&uv->append_pending_reqs));
+		dqlite_assert(queue_empty(&uv->append_pending_reqs));
 		return 0;
 	}
 
@@ -467,7 +467,7 @@ start:
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -497,13 +497,13 @@ static void uvAliveSegmentPrepareCb(struct uvPrepare *req, int status)
 	struct uv *uv = segment->uv;
 	int rv;
 
-	assert(segment->counter == 0);
-	assert(segment->written == 0);
+	dqlite_assert(segment->counter == 0);
+	dqlite_assert(segment->written == 0);
 
 	/* If we have been closed, let's discard the segment. */
 	if (uv->closing) {
 		queue_remove(&segment->queue);
-		assert(status ==
+		dqlite_assert(status ==
 		       RAFT_CANCELED); /* UvPrepare cancels pending reqs */
 		uvSegmentBufferClose(&segment->pending);
 		RaftHeapFree(segment);
@@ -516,12 +516,12 @@ static void uvAliveSegmentPrepareCb(struct uvPrepare *req, int status)
 		goto err;
 	}
 
-	assert(req->counter > 0);
-	assert(req->fd >= 0);
+	dqlite_assert(req->counter > 0);
+	dqlite_assert(req->fd >= 0);
 
 	/* There must be pending appends that were waiting for this prepare
 	 * requests. */
-	assert(!queue_empty(&uv->append_pending_reqs));
+	dqlite_assert(!queue_empty(&uv->append_pending_reqs));
 
 	rv = uvAliveSegmentReady(uv, req->fd, req->counter, segment);
 	if (rv != 0) {
@@ -605,7 +605,7 @@ err_after_alloc:
 	queue_remove(&segment->queue);
 	RaftHeapFree(segment);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -658,9 +658,9 @@ static int uvAppendEnqueueRequest(struct uv *uv, struct uvAppend *append)
 	bool fits;
 	int rv;
 
-	assert(append->entries != NULL);
-	assert(append->n > 0);
-	assert(uv->append_next_index > 0);
+	dqlite_assert(append->entries != NULL);
+	dqlite_assert(append->n > 0);
+	dqlite_assert(uv->append_next_index > 0);
 	tracef("enqueue %u entries", append->n);
 
 	size = uvAppendSize(append);
@@ -695,12 +695,12 @@ static int uvAppendEnqueueRequest(struct uv *uv, struct uvAppend *append)
 	queue_insert_tail(&uv->append_pending_reqs, &append->queue);
 	sm_move(&append->req->sm, APPEND_PENDING);
 	uv->append_next_index += append->n;
-	tracef("set uv->append_next_index %llu", uv->append_next_index);
+	tracef("set uv->append_next_index %" PRIu64, uv->append_next_index);
 
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -734,7 +734,7 @@ int UvAppend(struct raft_io *io,
 	int rv;
 
 	uv = io->impl;
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	sm_init(&req->sm, append_invariant, NULL, append_states, "append", APPEND_START);
 
@@ -758,8 +758,8 @@ int UvAppend(struct raft_io *io,
 		goto err_after_req_alloc;
 	}
 
-	assert(append->segment != NULL);
-	assert(!queue_empty(&uv->append_pending_reqs));
+	dqlite_assert(append->segment != NULL);
+	dqlite_assert(!queue_empty(&uv->append_pending_reqs));
 
 	/* Try to write immediately. */
 	rv = uvAppendMaybeStart(uv);
@@ -773,7 +773,7 @@ err_after_req_alloc:
 	RaftHeapFree(append);
 err:
 	sm_fail(&req->sm, APPEND_FAILED, rv);
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -881,11 +881,11 @@ int UvBarrier(struct uv *uv, raft_index next_index, struct UvBarrierReq *req)
 	struct uvAliveSegment *segment = NULL;
 	queue *head;
 
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	/* The next entry will be appended at this index. */
 	uv->append_next_index = next_index;
-	tracef("UvBarrier uv->append_next_index:%llu", uv->append_next_index);
+	tracef("UvBarrier uv->append_next_index: %" PRIu64, uv->append_next_index);
 
 	/* Arrange for all open segments not already involved in other barriers
 	 * to be finalized as soon as their append requests get completed and
@@ -944,7 +944,7 @@ int UvBarrier(struct uv *uv, raft_index next_index, struct UvBarrierReq *req)
 		uv->barrier->blocking = true;
 	}
 
-	assert(barrier != NULL);
+	dqlite_assert(barrier != NULL);
 	if (uv->barrier == NULL) {
 		uv->barrier = barrier;
 		/* If there's no pending append-related activity, we can fire
@@ -990,8 +990,8 @@ void UvUnblock(struct uv *uv)
 
 void UvBarrierAddReq(struct UvBarrier *barrier, struct UvBarrierReq *req)
 {
-	assert(barrier != NULL);
-	assert(req != NULL);
+	dqlite_assert(barrier != NULL);
+	dqlite_assert(req != NULL);
 	/* Once there's a blocking req, this barrier becomes blocking. */
 	barrier->blocking |= req->blocking;
 	queue_insert_tail(&barrier->reqs, &req->queue);
@@ -1004,7 +1004,7 @@ static void uvBarrierClose(struct uv *uv)
 	tracef("uv barrier close");
 	struct UvBarrier *barrier = NULL;
 	queue *head;
-	assert(uv->closing);
+	dqlite_assert(uv->closing);
 	QUEUE_FOREACH(head, &uv->append_segments)
 	{
 		struct uvAliveSegment *segment;
@@ -1059,7 +1059,7 @@ static void uvBarrierClose(struct uv *uv)
 void uvAppendClose(struct uv *uv)
 {
 	struct uvAliveSegment *segment;
-	assert(uv->closing);
+	dqlite_assert(uv->closing);
 
 	uvBarrierClose(uv);
 	UvPrepareClose(uv);
@@ -1073,11 +1073,11 @@ void uvAppendClose(struct uv *uv)
 	 * current segment to complete. */
 	while (!queue_empty(&uv->append_segments)) {
 		segment = uvGetLastAliveSegment(uv);
-		assert(segment != NULL);
+		dqlite_assert(segment != NULL);
 		if (segment == uvGetCurrentAliveSegment(uv)) {
 			break; /* We reached the head of the queue */
 		}
-		assert(segment->written == 0);
+		dqlite_assert(segment->written == 0);
 		uvAliveSegmentFinalize(segment);
 	}
 }

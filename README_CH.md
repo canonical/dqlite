@@ -1,7 +1,7 @@
 
 # dqlite 
 
-[![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/canonical/dqlite/branch/master/graph/badge.svg)](https://codecov.io/gh/canonical/dqlite)
+[![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/canonical/dqlite/branch/main/graph/badge.svg)](https://codecov.io/gh/canonical/dqlite)
 
 **注意**：中文文档有可能未及时更新，请以最新的英文[readme](./README.md)为准。
 
@@ -19,7 +19,7 @@
 
 ## license
 
-dqlite库是在略微修改的 LGPLv3 版本下发布的，其中包括一个版权例外，允许用户在他们的项目中静态链接这个库的代码并按照自己的条款发布最终作品。如有需要，请查看完整[license](https://github.com/canonical/dqlite/blob/master/LICENSE)文件。
+dqlite库是在略微修改的 LGPLv3 版本下发布的，其中包括一个版权例外，允许用户在他们的项目中静态链接这个库的代码并按照自己的条款发布最终作品。如有需要，请查看完整[license](https://github.com/canonical/dqlite/blob/main/LICENSE)文件。
 
 ## 兼容性
 

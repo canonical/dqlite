@@ -6,8 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../lib/assert.h"
 #include "array.h"
-#include "assert.h"
 #include "byte.h"
 #include "configuration.h"
 #include "entry.h"
@@ -26,7 +26,7 @@ static bool uvSegmentInfoMatch(const char *filename, struct uvSegmentInfo *info)
 	size_t n;
 	size_t filename_len = strnlen(filename, UV__FILENAME_LEN + 1);
 
-	assert(filename_len < UV__FILENAME_LEN);
+	dqlite_assert(filename_len < UV__FILENAME_LEN);
 
 	matched = sscanf(filename, UV__CLOSED_TEMPLATE "%n", &info->first_index,
 			 &info->end_index, &consumed);
@@ -95,8 +95,8 @@ static int uvSegmentInfoCompare(const void *p1, const void *p2)
 
 	/* If the segments are open, compare the counter. */
 	if (s1->is_open) {
-		assert(s2->is_open);
-		assert(s1->counter != s2->counter);
+		dqlite_assert(s2->is_open);
+		dqlite_assert(s1->counter != s2->counter);
 		return s1->counter < s2->counter ? -1 : 1;
 	}
 
@@ -125,8 +125,8 @@ int uvSegmentKeepTrailing(struct uv *uv,
 	size_t i;
 	int rv;
 
-	assert(last_index > 0);
-	assert(n > 0);
+	dqlite_assert(last_index > 0);
+	dqlite_assert(n > 0);
 
 	if (last_index <= trailing) {
 		return 0;
@@ -203,12 +203,12 @@ static int uvConsumeContent(const struct raft_buffer *content,
 /* Load a single batch of entries from a segment.
  *
  * Set @last to #true if the loaded batch is the last one. */
-static int uvLoadEntriesBatch(struct uv *uv,
-			      const struct raft_buffer *content,
+int uvLoadEntriesBatch(const struct raft_buffer *content,
 			      struct raft_entry **entries,
 			      unsigned *n_entries,
 			      size_t *offset, /* Offset of last batch */
-			      bool *last)
+			      bool *last,
+				  char errmsg[RAFT_ERRMSG_BUF_SIZE])
 {
 	void *checksums;           /* CRC32 checksums */
 	void *batch;               /* Entries batch */
@@ -219,7 +219,6 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	struct raft_buffer data;   /* Batch data */
 	uint32_t crc1;             /* Target checksum */
 	uint32_t crc2;             /* Actual checksum */
-	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 	size_t start;
 	int rv;
 
@@ -230,7 +229,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	rv = uvConsumeContent(content, offset, sizeof(uint32_t) * 2, &checksums,
 			      errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read preamble");
+		ErrMsgWrapf(errmsg, "read preamble");
 		return RAFT_IOERR;
 	}
 
@@ -239,13 +238,13 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	rv =
 	    uvConsumeContent(content, offset, sizeof(uint64_t), &batch, errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read preamble");
+		ErrMsgWrapf(errmsg, "read preamble");
 		return RAFT_IOERR;
 	}
 
 	n = (size_t)byteFlip64(*(uint64_t *)batch);
 	if (n == 0) {
-		ErrMsgPrintf(uv->io->errmsg,
+		ErrMsgPrintf(errmsg,
 			     "entries count in preamble is zero");
 		rv = RAFT_CORRUPT;
 		goto err;
@@ -258,7 +257,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	max_n = UV__MAX_SEGMENT_SIZE / (sizeof(uint64_t) * 4);
 
 	if (n > max_n) {
-		ErrMsgPrintf(uv->io->errmsg,
+		ErrMsgPrintf(errmsg,
 			     "entries count %lu in preamble is too high", n);
 		rv = RAFT_CORRUPT;
 		goto err;
@@ -273,7 +272,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 			      uvSizeofBatchHeader(n) - sizeof(uint64_t), NULL,
 			      errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read header");
+		ErrMsgWrapf(errmsg, "read header"); 
 		rv = RAFT_IOERR;
 		goto err;
 	}
@@ -282,7 +281,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	crc1 = byteFlip32(((uint32_t *)checksums)[0]);
 	crc2 = byteCrc32(header.base, header.len, 0);
 	if (crc1 != crc2) {
-		ErrMsgPrintf(uv->io->errmsg, "header checksum mismatch");
+		ErrMsgPrintf(errmsg, "header checksum mismatch");
 		rv = RAFT_CORRUPT;
 		goto err;
 	}
@@ -304,7 +303,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	/* Consume the batch data */
 	rv = uvConsumeContent(content, offset, data.len, NULL, errmsg);
 	if (rv != 0) {
-		ErrMsgTransfer(errmsg, uv->io->errmsg, "read data");
+		ErrMsgWrapf(errmsg, "read data");
 		rv = RAFT_IOERR;
 		goto err_after_header_decode;
 	}
@@ -314,7 +313,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	crc2 = byteCrc32(data.base, data.len, 0);
 	if (crc1 != crc2) {
 		tracef("batch is bad");
-		ErrMsgPrintf(uv->io->errmsg, "data checksum mismatch");
+		ErrMsgPrintf(errmsg, "data checksum mismatch");
 		rv = RAFT_CORRUPT;
 		goto err_after_header_decode;
 	}
@@ -334,7 +333,7 @@ err_after_header_decode:
 err:
 	*entries = NULL;
 	*n_entries = 0;
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	*offset = start;
 	return rv;
 }
@@ -415,8 +414,8 @@ int uvSegmentLoadClosed(struct uv *uv,
 	last = false;
 	offset = sizeof format;
 	for (i = 1; !last; i++) {
-		rv = uvLoadEntriesBatch(uv, &buf, &tmp_entries, &tmp_n, &offset,
-					&last);
+		rv = uvLoadEntriesBatch(&buf, &tmp_entries, &tmp_n, &offset,
+					&last, uv->io->errmsg);
 		if (rv != 0) {
 			ErrMsgWrapf(uv->io->errmsg,
 				    "entries batch %u starting at byte %zu", i,
@@ -438,8 +437,8 @@ int uvSegmentLoadClosed(struct uv *uv,
 		goto err_after_extend_entries;
 	}
 
-	assert(i > 1);  /* At least one batch was loaded. */
-	assert(*n > 0); /* At least one entry was loaded. */
+	dqlite_assert(i > 1);  /* At least one batch was loaded. */
+	dqlite_assert(*n > 0); /* At least one entry was loaded. */
 
 	return 0;
 
@@ -456,7 +455,7 @@ err_after_read:
 	RaftHeapFree(buf.base);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 
 	return rv;
 }
@@ -477,8 +476,7 @@ static bool uvContentHasOnlyTrailingZeros(const struct raft_buffer *buf,
 	return true;
 }
 
-/* Load all entries contained in an open segment. */
-static int uvSegmentLoadOpen(struct uv *uv,
+int uvSegmentLoadOpen(struct uv *uv,
 			     struct uvSegmentInfo *info,
 			     struct raft_entry *entries[],
 			     size_t *n,
@@ -545,8 +543,8 @@ static int uvSegmentLoadOpen(struct uv *uv,
 
 	/* Load all batches in the segment. */
 	for (i = 1; !last; i++) {
-		rv = uvLoadEntriesBatch(uv, &buf, &tmp_entries, &tmp_n_entries,
-					&offset, &last);
+		rv = uvLoadEntriesBatch(&buf, &tmp_entries, &tmp_n_entries,
+					&offset, &last, uv->io->errmsg);
 		if (rv != 0) {
 			/* If this isn't a decoding error, just bail out. */
 			if (rv != RAFT_CORRUPT) {
@@ -568,11 +566,11 @@ static int uvSegmentLoadOpen(struct uv *uv,
 			}
 
 			tracef(
-			    "truncate open segment %s at %zu (batch %d), since "
+			    "truncate open segment %s at %" PRIu64 " (batch %d), since "
 			    "it has "
 			    "corrupted "
 			    "entries",
-			    info->filename, offset, i);
+			    info->filename, (uint64_t)offset, i);
 
 			break;
 		}
@@ -609,7 +607,7 @@ done:
 		raft_index end_index = *next_index - 1;
 
 		/* At least one entry was loaded */
-		assert(end_index >= first_index);
+		dqlite_assert(end_index >= first_index);
 		int nb = snprintf(filename, sizeof(filename),
 				  UV__CLOSED_TEMPLATE, first_index, end_index);
 		if ((nb < 0) || ((size_t)nb >= sizeof(filename))) {
@@ -653,7 +651,7 @@ err_after_read:
 	}
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 
 	return rv;
 }
@@ -668,7 +666,7 @@ static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 	size_t len;
 
 	if (b->arena.len >= size) {
-		assert(b->arena.base != NULL);
+		dqlite_assert(b->arena.base != NULL);
 		return 0;
 	}
 
@@ -686,7 +684,7 @@ static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 	/* If the current arena is initialized, we need to copy its content,
 	 * since it might have data that we want to retain in the next write. */
 	if (b->arena.base != NULL) {
-		assert(b->arena.len >= b->block_size);
+		dqlite_assert(b->arena.len >= b->block_size);
 		memcpy(base, b->arena.base, b->arena.len);
 		raft_aligned_free(b->block_size, b->arena.base);
 	}
@@ -717,7 +715,7 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
 	int rv;
 	void *cursor;
 	size_t n;
-	assert(b->n == 0);
+	dqlite_assert(b->n == 0);
 	n = sizeof(uint64_t);
 	rv = uvEnsureSegmentBufferIsLargeEnough(b, n);
 	if (rv != 0) {
@@ -771,7 +769,7 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 	crc2 = 0;
 	for (i = 0; i < n_entries; i++) {
 		const struct raft_entry *entry = &entries[i];
-		assert(entry->buf.len % sizeof(uint64_t) == 0);
+		dqlite_assert(entry->buf.len % sizeof(uint64_t) == 0);
 		memcpy(cursor, entry->buf.base, entry->buf.len);
 		crc2 = byteCrc32(cursor, entry->buf.len, crc2);
 		cursor = (uint8_t *)cursor + entry->buf.len;
@@ -806,8 +804,8 @@ void uvSegmentBufferFinalize(struct uvSegmentBuffer *b, uv_buf_t *out)
 
 void uvSegmentBufferReset(struct uvSegmentBuffer *b, unsigned retain)
 {
-	assert(b->n > 0);
-	assert(b->arena.base != NULL);
+	dqlite_assert(b->n > 0);
+	dqlite_assert(b->arena.base != NULL);
 
 	if (retain == 0) {
 		b->n = 0;
@@ -896,8 +894,8 @@ int uvSegmentLoadAll(struct uv *uv,
 	size_t i;
 	int rv;
 
-	assert(start_index >= 1);
-	assert(n_infos > 0);
+	dqlite_assert(start_index >= 1);
+	dqlite_assert(n_infos > 0);
 
 	*entries = NULL;
 	*n_entries = 0;
@@ -922,8 +920,8 @@ int uvSegmentLoadAll(struct uv *uv,
 				goto err;
 			}
 		} else {
-			assert(info->first_index >= start_index);
-			assert(info->first_index <= info->end_index);
+			dqlite_assert(info->first_index >= start_index);
+			dqlite_assert(info->first_index <= info->end_index);
 
 			/* Check that the start index encoded in the name of the
 			 * segment matches what we expect and there are no gaps
@@ -932,7 +930,7 @@ int uvSegmentLoadAll(struct uv *uv,
 				ErrMsgPrintf(uv->io->errmsg,
 					     "unexpected closed segment %s: "
 					     "first index should "
-					     "have been %llu",
+					     "have been %" PRIu64,
 					     info->filename, next_index);
 				rv = RAFT_CORRUPT;
 				goto err;
@@ -951,7 +949,7 @@ int uvSegmentLoadAll(struct uv *uv,
 				goto err;
 			}
 
-			assert(tmp_n > 0);
+			dqlite_assert(tmp_n > 0);
 			rv = extendEntries(tmp_entries, tmp_n, entries,
 					   n_entries);
 			if (rv != 0) {
@@ -968,7 +966,7 @@ int uvSegmentLoadAll(struct uv *uv,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 
 	/* Free any batch that we might have allocated and the entries array as
 	 * well. */
@@ -1006,7 +1004,7 @@ static int uvWriteClosedSegment(struct uv *uv,
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 	int rv;
 
-	assert(first_index <= last_index);
+	dqlite_assert(first_index <= last_index);
 
 	/* Render the path */
 	sprintf(filename, UV__CLOSED_TEMPLATE, first_index, last_index);
@@ -1091,7 +1089,7 @@ int uvSegmentCreateClosedWithConfiguration(
 err_after_configuration_encode:
 	raft_free(buf.base);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -1108,9 +1106,9 @@ int uvSegmentTruncate(struct uv *uv,
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 	int rv;
 
-	assert(!segment->is_open);
+	dqlite_assert(!segment->is_open);
 
-	tracef("truncate %llu-%llu at %llu", segment->first_index,
+	tracef("truncate %" PRIu64 "-%" PRIu64 " at %" PRIu64, segment->first_index,
 	       segment->end_index, index);
 
 	rv = uvSegmentLoadClosed(uv, segment, &entries, &n);
@@ -1121,7 +1119,7 @@ int uvSegmentTruncate(struct uv *uv,
 	}
 
 	/* Discard all entries after the truncate index (included) */
-	assert(index - segment->first_index < n);
+	dqlite_assert(index - segment->first_index < n);
 	m = (unsigned)(index - segment->first_index);
 
 	uvSegmentBufferInit(&buf, uv->block_size);

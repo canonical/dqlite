@@ -1,7 +1,7 @@
 #include "election.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "heap.h"
 #include "log.h"
@@ -19,7 +19,7 @@ struct followerOrCandidateState
 struct followerOrCandidateState *getFollowerOrCandidateState(struct raft *r)
 {
 	struct followerOrCandidateState *state;
-	assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
+	dqlite_assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
 	if (r->state == RAFT_FOLLOWER) {
 		state = (struct followerOrCandidateState *)&r->follower_state;
 	} else {
@@ -33,8 +33,8 @@ void electionResetTimer(struct raft *r)
 	struct followerOrCandidateState *state = getFollowerOrCandidateState(r);
 	unsigned timeout = (unsigned)r->io->random(
 	    r->io, (int)r->election_timeout, 2 * (int)r->election_timeout);
-	assert(timeout >= r->election_timeout);
-	assert(timeout <= r->election_timeout * 2);
+	dqlite_assert(timeout >= r->election_timeout);
+	dqlite_assert(timeout <= r->election_timeout * 2);
 	state->randomized_election_timeout = timeout;
 	r->election_timer_start = r->io->time(r->io);
 }
@@ -60,8 +60,8 @@ static int electionSend(struct raft *r, const struct raft_server *server)
 	struct raft_io_send *send;
 	raft_term term;
 	int rv;
-	assert(server->id != r->id);
-	assert(server->id != 0);
+	dqlite_assert(server->id != r->id);
+	dqlite_assert(server->id != 0);
 
 	/* If we are in the pre-vote phase, we indicate our future term in the
 	 * request. */
@@ -117,7 +117,7 @@ int electionStart(struct raft *r)
 	size_t voting_index;
 	size_t i;
 	int rv;
-	assert(r->state == RAFT_CANDIDATE);
+	dqlite_assert(r->state == RAFT_CANDIDATE);
 
 	n_voters = configurationVoterCount(&r->configuration);
 	voting_index = configurationIndexOfVoter(&r->configuration, r->id);
@@ -125,13 +125,13 @@ int electionStart(struct raft *r)
 	/* This function should not be invoked if we are not a voting server,
 	 * hence voting_index must be lower than the number of servers in the
 	 * configuration (meaning that we are a voting server). */
-	assert(voting_index < r->configuration.n);
+	dqlite_assert(voting_index < r->configuration.n);
 
 	/* Coherence check that configurationVoterCount and
 	 * configurationIndexOfVoter have returned something that makes sense.
 	 */
-	assert(n_voters <= r->configuration.n);
-	assert(voting_index < n_voters);
+	dqlite_assert(n_voters <= r->configuration.n);
+	dqlite_assert(voting_index < n_voters);
 
 	/* During pre-vote we don't increment our term, or reset our vote.
 	 * Resetting our vote could lead to double-voting if we were to receive
@@ -145,7 +145,7 @@ int electionStart(struct raft *r)
 			tracef("set_term failed %d", rv);
 			goto err;
 		}
-		tracef("beginning of term %llu", term);
+		tracef("beginning of term %" PRIu64, term);
 
 		/* Vote for self */
 		rv = r->io->set_vote(r->io, r->id);
@@ -162,7 +162,7 @@ int electionStart(struct raft *r)
 	/* Reset election timer. */
 	electionResetTimer(r);
 
-	assert(r->candidate_state.votes != NULL);
+	dqlite_assert(r->candidate_state.votes != NULL);
 
 	/* Initialize the votes array and send vote requests. */
 	for (i = 0; i < n_voters; i++) {
@@ -181,7 +181,7 @@ int electionStart(struct raft *r)
 		rv = electionSend(r, server);
 		if (rv != 0) {
 			/* This is not a critical failure, let's just log it. */
-			tracef("failed to send vote request to server %llu: %s",
+			tracef("failed to send vote request to server %" PRIu64 ": %s",
 			       server->id, raft_strerror(rv));
 		}
 	}
@@ -189,7 +189,7 @@ int electionStart(struct raft *r)
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -204,9 +204,9 @@ int electionVote(struct raft *r,
 			     */
 	int rv;
 
-	assert(r != NULL);
-	assert(args != NULL);
-	assert(granted != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(args != NULL);
+	dqlite_assert(granted != NULL);
 
 	local_server = configurationGet(&r->configuration, r->id);
 
@@ -253,7 +253,7 @@ int electionVote(struct raft *r,
 		/* The requesting server has last entry's log term lower than
 		 * ours. */
 		tracef(
-		    "local last entry %llu has term %llu higher than %llu -> "
+		    "local last entry %" PRIu64 " has term %" PRIu64 " higher than %" PRIu64 " -> "
 		    "not "
 		    "granting",
 		    local_last_index, local_last_term, args->last_log_term);
@@ -263,7 +263,7 @@ int electionVote(struct raft *r,
 	if (args->last_log_term > local_last_term) {
 		/* The requesting server has a more up-to-date log. */
 		tracef(
-		    "remote last entry %llu has term %llu higher than %llu -> "
+		    "remote last entry %" PRIu64 " has term %" PRIu64 " higher than %" PRIu64 " -> "
 		    "granting vote",
 		    args->last_log_index, args->last_log_term, local_last_term);
 		goto grant_vote;
@@ -271,7 +271,7 @@ int electionVote(struct raft *r,
 
 	/* The term of the last log entry is the same, so let's compare the
 	 * length of the log. */
-	assert(args->last_log_term == local_last_term);
+	dqlite_assert(args->last_log_term == local_last_term);
 
 	if (local_last_index <= args->last_log_index) {
 		/* Our log is shorter or equal to the one of the requester. */
@@ -297,7 +297,7 @@ grant_vote:
 		r->election_timer_start = r->io->time(r->io);
 	}
 
-	tracef("vote granted to %llu", args->candidate_id);
+	tracef("vote granted to %" PRIu64, args->candidate_id);
 	*granted = true;
 
 	return 0;
@@ -310,8 +310,8 @@ bool electionTally(struct raft *r, size_t voter_index)
 	size_t i;
 	size_t half = n_voters / 2;
 
-	assert(r->state == RAFT_CANDIDATE);
-	assert(r->candidate_state.votes != NULL);
+	dqlite_assert(r->state == RAFT_CANDIDATE);
+	dqlite_assert(r->candidate_state.votes != NULL);
 
 	r->candidate_state.votes[voter_index] = true;
 

@@ -1,6 +1,6 @@
+#include "../lib/assert.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
@@ -32,10 +32,10 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
 	 * Otherwise we we can't know if it's committed or not and treat it as
 	 * uncommitted. */
 	if (index == 1) {
-		assert(r->configuration_uncommitted_index == 0);
+		dqlite_assert(r->configuration_uncommitted_index == 0);
 		r->configuration_committed_index = 1;
 	} else {
-		assert(r->configuration_committed_index < index);
+		dqlite_assert(r->configuration_committed_index < index);
 		r->configuration_uncommitted_index = index;
 	}
 
@@ -130,7 +130,7 @@ static int maybeSelfElect(struct raft *r)
 	if (rv != 0) {
 		return rv;
 	}
-	assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_LEADER);
 	return 0;
 }
 
@@ -144,14 +144,14 @@ int raft_start(struct raft *r)
 	size_t n_entries;
 	int rv;
 
-	assert(r != NULL);
-	assert(r->state == RAFT_UNAVAILABLE);
-	assert(r->heartbeat_timeout != 0);
-	assert(r->heartbeat_timeout < r->election_timeout);
-	assert(r->install_snapshot_timeout != 0);
-	assert(logNumEntries(r->log) == 0);
-	assert(logSnapshotIndex(r->log) == 0);
-	assert(r->last_stored == 0);
+	dqlite_assert(r != NULL);
+	dqlite_assert(r->state == RAFT_UNAVAILABLE);
+	dqlite_assert(r->heartbeat_timeout != 0);
+	dqlite_assert(r->heartbeat_timeout < r->election_timeout);
+	dqlite_assert(r->install_snapshot_timeout != 0);
+	dqlite_assert(logNumEntries(r->log) == 0);
+	dqlite_assert(logSnapshotIndex(r->log) == 0);
+	dqlite_assert(r->last_stored == 0);
 
 #ifndef RAFT_REVISION
 #define RAFT_REVISION "unknown"
@@ -164,15 +164,15 @@ int raft_start(struct raft *r)
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		return rv;
 	}
-	assert(start_index >= 1);
+	dqlite_assert(start_index >= 1);
 	tracef(
-	    "current_term:%llu voted_for:%llu start_index:%llu n_entries:%zu",
-	    r->current_term, r->voted_for, start_index, n_entries);
+	    "current_term: %" PRIu64 " voted_for: %" PRIu64 " start_index: %" PRIu64 " n_entries: %" PRIu64,
+	    r->current_term, r->voted_for, start_index, (uint64_t)n_entries);
 
 	/* If we have a snapshot, let's restore it. */
 	if (snapshot != NULL) {
 		tracef(
-		    "restore snapshot with last index %llu and last term %llu",
+		    "restore snapshot with last index %" PRIu64 " and last term %" PRIu64,
 		    snapshot->index, snapshot->term);
 		rv = snapshotRestore(r, snapshot);
 		if (rv != 0) {
@@ -186,8 +186,8 @@ int raft_start(struct raft *r)
 	} else if (n_entries > 0) {
 		/* If we don't have a snapshot and the on-disk log is not empty,
 		 * then the first entry must be a configuration entry. */
-		assert(start_index == 1);
-		assert(entries[0].type == RAFT_CHANGE);
+		dqlite_assert(start_index == 1);
+		dqlite_assert(entries[0].type == RAFT_CHANGE);
 
 		/* As a small optimization, bump the commit index to 1 since we
 		 * require the first entry to be the same on all servers. */
@@ -197,7 +197,7 @@ int raft_start(struct raft *r)
 
 	/* Append the entries to the log, possibly restoring the last
 	 * configuration. */
-	tracef("restore %zu entries starting at %llu", n_entries, start_index);
+	tracef("restore %" PRIu64 " entries starting at %" PRIu64, (uint64_t)n_entries, start_index);
 	rv = restoreEntries(r, snapshot_index, snapshot_term, start_index,
 			    entries, n_entries);
 	if (rv != 0) {

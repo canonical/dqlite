@@ -1,7 +1,7 @@
+#include "../lib/assert.h"
 #include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "err.h"
 #include "log.h"
@@ -21,11 +21,11 @@ int raft_apply(struct raft *r,
 	const struct sm *entry_sm;
 	int rv;
 
-	tracef("raft_apply n %d", n);
+	tracef("raft_apply n %u", n);
 
-	assert(r != NULL);
-	assert(bufs != NULL);
-	assert(n > 0);
+	dqlite_assert(r != NULL);
+	dqlite_assert(bufs != NULL);
+	dqlite_assert(n > 0);
 
 	if (r->state != RAFT_LEADER || r->transfer != NULL) {
 		rv = RAFT_NOTLEADER;
@@ -36,7 +36,7 @@ int raft_apply(struct raft *r,
 
 	/* Index of the first entry being appended. */
 	start = logLastIndex(r->log) + 1;
-	tracef("%u commands starting at %lld", n, start);
+	tracef("%u commands starting at %" PRIu64, n, start);
 	req->type = RAFT_COMMAND;
 	req->index = start;
 	req->cb = cb;
@@ -53,7 +53,7 @@ int raft_apply(struct raft *r,
 			goto err_after_request_start;
 		}
 		entry_sm = log_get_entry_sm(r->log, r->current_term, index);
-		assert(entry_sm != NULL);
+		dqlite_assert(entry_sm != NULL);
 		sm_relate(&req->sm, entry_sm);
 		index++;
 	}
@@ -70,7 +70,7 @@ err_after_request_start:
 	queue_remove(&req->queue);
 	sm_fail(&req->sm, REQUEST_FAILED, rv);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -121,15 +121,14 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	req->index++;
 	req->next = NULL;
 
-	/* TODO: use a completely empty buffer */
 	buf.len = 8;
 	buf.base = raft_malloc(buf.len);
-
 	if (buf.base == NULL) {
 		return RAFT_NOMEM;
 	}
+	memset(buf.base, 0, buf.len);
 
-	tracef("barrier starting at %lld", req->index);
+	tracef("barrier starting at %" PRIu64, req->index);
 	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
 	if (rv != 0) {
 		goto err_after_buf_alloc;
@@ -203,7 +202,7 @@ err_after_log_append:
 	logTruncate(r->log, index);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -221,7 +220,7 @@ int raft_add(struct raft *r,
 		return rv;
 	}
 
-	tracef("add server: id %llu, address %s", id, address);
+	tracef("add server: id %" PRIu64 ", address %s", id, address);
 
 	/* Make a copy of the current configuration, and add the new server to
 	 * it. */
@@ -242,7 +241,7 @@ int raft_add(struct raft *r,
 		goto err_after_configuration_copy;
 	}
 
-	assert(r->leader_state.change == NULL);
+	dqlite_assert(r->leader_state.change == NULL);
 	r->leader_state.change = req;
 
 	return 0;
@@ -250,7 +249,7 @@ int raft_add(struct raft *r,
 err_after_configuration_copy:
 	raft_configuration_close(&configuration);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -265,7 +264,7 @@ int raft_assign(struct raft *r,
 	raft_index last_index;
 	int rv;
 
-	tracef("raft_assign to id:%llu the role:%d", id, role);
+	tracef("raft_assign to id:%" PRIu64 " the role:%d", id, role);
 	if (role != RAFT_STANDBY && role != RAFT_VOTER && role != RAFT_SPARE) {
 		rv = RAFT_BADROLE;
 		ErrMsgFromCode(r->errmsg, rv);
@@ -280,7 +279,7 @@ int raft_assign(struct raft *r,
 	server = configurationGet(&r->configuration, id);
 	if (server == NULL) {
 		rv = RAFT_NOTFOUND;
-		ErrMsgPrintf(r->errmsg, "no server has ID %llu", id);
+		ErrMsgPrintf(r->errmsg, "no server has ID %" PRIu64, id);
 		goto err;
 	}
 
@@ -300,7 +299,7 @@ int raft_assign(struct raft *r,
 				break;
 			default:
 				name = NULL;
-				assert(0);
+				dqlite_assert(0);
 				break;
 		}
 		ErrMsgPrintf(r->errmsg, "server is already %s", name);
@@ -308,13 +307,13 @@ int raft_assign(struct raft *r,
 	}
 
 	server_index = configurationIndexOf(&r->configuration, id);
-	assert(server_index < r->configuration.n);
+	dqlite_assert(server_index < r->configuration.n);
 
 	last_index = logLastIndex(r->log);
 
 	req->cb = cb;
 
-	assert(r->leader_state.change == NULL);
+	dqlite_assert(r->leader_state.change == NULL);
 	r->leader_state.change = req;
 
 	/* If we are not promoting to the voter role or if the log of this
@@ -346,14 +345,14 @@ int raft_assign(struct raft *r,
 	rv = replicationProgress(r, server_index);
 	if (rv != 0 && rv != RAFT_NOCONNECTION) {
 		/* This error is not fatal. */
-		tracef("failed to send append entries to server %llu: %s (%d)",
+		tracef("failed to send append entries to server %" PRIu64 ": %s (%d)",
 		       server->id, raft_strerror(rv), rv);
 	}
 
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -377,7 +376,7 @@ int raft_remove(struct raft *r,
 		goto err;
 	}
 
-	tracef("remove server: id %llu", id);
+	tracef("remove server: id %" PRIu64, id);
 
 	/* Make a copy of the current configuration, and remove the given server
 	 * from it. */
@@ -398,7 +397,7 @@ int raft_remove(struct raft *r,
 		goto err_after_configuration_copy;
 	}
 
-	assert(r->leader_state.change == NULL);
+	dqlite_assert(r->leader_state.change == NULL);
 	r->leader_state.change = req;
 
 	return 0;
@@ -407,7 +406,7 @@ err_after_configuration_copy:
 	raft_configuration_close(&configuration);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -444,7 +443,7 @@ int raft_transfer(struct raft *r,
 	unsigned i;
 	int rv;
 
-	tracef("transfer to %llu", id);
+	tracef("transfer to %" PRIu64, id);
 	if (r->state != RAFT_LEADER || r->transfer != NULL) {
 		tracef("transfer error - state:%d", r->state);
 		rv = RAFT_NOTLEADER;
@@ -473,7 +472,7 @@ int raft_transfer(struct raft *r,
 	/* If this follower is up-to-date, we can send it the TimeoutNow message
 	 * right away. */
 	i = configurationIndexOf(&r->configuration, server->id);
-	assert(i < r->configuration.n);
+	dqlite_assert(i < r->configuration.n);
 
 	membershipLeadershipTransferInit(r, req, id, cb);
 
@@ -488,7 +487,7 @@ int raft_transfer(struct raft *r,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 

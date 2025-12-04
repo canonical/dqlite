@@ -1,17 +1,17 @@
 #include "recv.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "convert.h"
 #include "entry.h"
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
-#include "recv_append_entries.h"
 #include "recv_append_entries_result.h"
+#include "recv_append_entries.h"
 #include "recv_install_snapshot.h"
-#include "recv_request_vote.h"
 #include "recv_request_vote_result.h"
+#include "recv_request_vote.h"
 #include "recv_timeout_now.h"
 #include "string.h"
 
@@ -72,7 +72,7 @@ static int recvMessage(struct raft *r, struct raft_message *message)
 	};
 
 	if (rv != 0 && rv != RAFT_NOCONNECTION) {
-		tracef("recv: %d: %s", message->type, raft_strerror(rv));
+		tracef("recv: %d: %s", (int)message->type, raft_strerror(rv));
 		return rv;
 	}
 
@@ -117,10 +117,10 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
 	int rv;
 	char msg[128];
 
-	assert(r != NULL);
-	assert(term > r->current_term);
+	dqlite_assert(r != NULL);
+	dqlite_assert(term > r->current_term);
 
-	sprintf(msg, "remote term %lld is higher than %lld -> bump local term",
+	sprintf(msg, "remote term %" PRIu64 " is higher than %" PRIu64 " -> bump local term",
 		term, r->current_term);
 	if (r->state != RAFT_FOLLOWER) {
 		strcat(msg, " and step down");
@@ -160,13 +160,13 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
 {
 	int rv;
 
-	assert(r != NULL);
-	assert(match != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(match != NULL);
 
 	recvCheckMatchingTerms(r, term, match);
 
 	if (*match == -1) {
-		tracef("old term - current_term:%llu other_term:%llu",
+		tracef("old term - current_term: %" PRIu64 " other_term: %" PRIu64,
 		       r->current_term, term);
 		return 0;
 	}
@@ -198,7 +198,7 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
 
 int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)
 {
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 
 	r->follower_state.current_leader.id = id;
 

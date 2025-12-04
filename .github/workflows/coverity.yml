@@ -2,7 +2,7 @@ name: Coverity
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   test:
@@ -42,9 +42,9 @@ jobs:
           curl \
             --form project=canonical/dqlite \
             --form token=${TOKEN} \
-            --form email=mathieu.bordere@canonical.com \
+            --form email=marco.manino@canonical.com \
             --form file=@dqlite.tgz \
-            --form version=master \
+            --form version=main \
             --form description="${GITHUB_SHA}" \
             https://scan.coverity.com/builds?project=canonical/dqlite
         env:

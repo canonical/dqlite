@@ -1,5 +1,5 @@
 #ifndef _GNU_SOURCE
-# define _GNU_SOURCE
+#define _GNU_SOURCE
 #endif
 
 #include <fcntl.h>
@@ -10,20 +10,20 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "err.h"
 #include "heap.h"
 #include "uv_fs.h"
 #include "uv_os.h"
 
 #ifdef HAVE_XFS_XFS_H
-# include <xfs/xfs.h> 
-# include <linux/magic.h> 
+#include <linux/magic.h>
+#include <xfs/xfs.h>
 #endif
 
 #ifdef LZ4_AVAILABLE
-# include <lz4.h>
-# include <lz4frame.h>
+#include <lz4.h>
+#include <lz4frame.h>
 #endif
 
 #define UV__FS_PROBE_FILE ".probe"
@@ -223,12 +223,12 @@ static int uvXfsMaybeReopen(int fd, const char *dir, int flags)
 		return fd;
 	}
 
-    xfs_handle_t handle = {};
-    __u32 handle_length = sizeof(handle);
+	xfs_handle_t handle = {};
+	__u32 handle_length = sizeof(handle);
 	xfs_fsop_handlereq_t req = {
 		.fd = (unsigned)fd,
-	    .ohandle = &handle,
-	    .ohandlen = &handle_length, 
+		.ohandle = &handle,
+		.ohandlen = &handle_length,
 	};
 
 	int rv = ioctl(dirfd, XFS_IOC_FD_TO_HANDLE, &req);
@@ -236,11 +236,11 @@ static int uvXfsMaybeReopen(int fd, const char *dir, int flags)
 		close(dirfd);
 		return fd;
 	}
-	
+
 	req = (xfs_fsop_handlereq_t){
-	    .ihandle = &handle,
-	    .ihandlen = handle_length,
-        .oflags = (__u32)(flags & ~(O_CREAT | O_EXCL)),
+		.ihandle = &handle,
+		.ihandlen = handle_length,
+		.oflags = (__u32)(flags & ~(O_CREAT | O_EXCL)),
 	};
 	int new_fd = ioctl(dirfd, XFS_IOC_OPEN_BY_HANDLE, &req);
 	close(dirfd);
@@ -385,10 +385,9 @@ err_after_open:
 err_unlink:
 	UvOsUnlink(path);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
-
 
 static int uvFsWriteFile(const char *dir,
 			 const char *filename,
@@ -444,9 +443,9 @@ int UvFsMakeFile(const char *dir,
 		 char *errmsg)
 {
 	int rv;
-	char tmp_filename[UV__FILENAME_LEN + 1] = {0};
-	char path[UV__PATH_SZ] = {0};
-	char tmp_path[UV__PATH_SZ] = {0};
+	char tmp_filename[UV__FILENAME_LEN + 1] = { 0 };
+	char path[UV__PATH_SZ] = { 0 };
+	char tmp_path[UV__PATH_SZ] = { 0 };
 
 	/* Create a temp file with the given content
 	 * TODO as of libuv 1.34.0, use `uv_fs_mkstemp` */
@@ -505,7 +504,12 @@ err_after_tmp_create:
 }
 
 #ifdef LZ4_AVAILABLE
-static inline int uvOsWriteOne(uv_os_fd_t fd, void *data, size_t length, int64_t offset, char *errmsg) {
+static inline int uvOsWriteOne(uv_os_fd_t fd,
+			       void *data,
+			       size_t length,
+			       int64_t offset,
+			       char *errmsg)
+{
 	const uv_buf_t buffer = {
 		.base = data,
 		.len = length,
@@ -551,19 +555,10 @@ int UvFsMakeCompressedFile(const char *dir,
 	}
 	uv_file fd = (uv_file)temp_file.result;
 
-	size_t chunk_size = 0;
 	size_t content_size = 0;
 	for (unsigned i = 0; i < n_bufs; i++) {
-		if (bufs[i].len > chunk_size) {
-			chunk_size = bufs[i].len;
-		}
 		content_size += bufs[i].len;
 	}
-
-	/* Limit the size of each chunk to 4MB to make sure this logic doesn't
-	 * need too much memory. */
-	const size_t lz4_max_block_size = 4 * 1024 * 1024;
-	assert(chunk_size <= lz4_max_block_size);
 
 	LZ4F_preferences_t
 	    lz4_pref = { .frameInfo = {
@@ -574,7 +569,11 @@ int UvFsMakeCompressedFile(const char *dir,
 			     .contentSize = content_size,
 			 } };
 
-	const size_t output_cap = LZ4F_compressBound(chunk_size, &lz4_pref);
+	/* Limit the size of each chunk to 4MB to make sure this logic doesn't
+	 * need too much memory. */
+	const size_t lz4_max_block_size = 4 * 1024 * 1024;
+	const size_t output_cap =
+	    LZ4F_compressBound(lz4_max_block_size, &lz4_pref);
 	char *output_buffer = raft_malloc(output_cap);
 	if (output_buffer == NULL) {
 		rv = RAFT_NOMEM;
@@ -607,23 +606,30 @@ int UvFsMakeCompressedFile(const char *dir,
 	}
 
 	for (unsigned i = 0; i < n_bufs; i++) {
-		output_len =
-		    LZ4F_compressUpdate(ctx, output_buffer, output_cap,
-					bufs[i].base, bufs[i].len, NULL);
-		if (output_len == 0) {
-			/* In this case the output is buffered internally by
-			 * liblz4 */
-			continue;
-		} else if (LZ4F_isError(output_len)) {
-			ErrMsgPrintf(errmsg, "LZ4F_compressUpdate %s",
-				     LZ4F_getErrorName(output_len));
-			rv = RAFT_IOERR;
-			goto err_after_ctx_alloc;
-		}
+		size_t chunk_offset = 0;
+		while (chunk_offset < bufs[i].len) {
+			const size_t chunk_size =
+			    MIN(lz4_max_block_size, bufs[i].len - chunk_offset);
+			output_len = LZ4F_compressUpdate(
+			    ctx, output_buffer, output_cap,
+			    bufs[i].base + chunk_offset, chunk_size, NULL);
+			chunk_offset += chunk_size;
+			if (output_len == 0) {
+				/* In this case the output is buffered
+				 * internally by liblz4 */
+				continue;
+			} else if (LZ4F_isError(output_len)) {
+				ErrMsgPrintf(errmsg, "LZ4F_compressUpdate %s",
+					     LZ4F_getErrorName(output_len));
+				rv = RAFT_IOERR;
+				goto err_after_ctx_alloc;
+			}
 
-		rv = uvOsWriteOne(fd, output_buffer, output_len, -1, errmsg);
-		if (rv != RAFT_OK) {
-			goto err_after_ctx_alloc;
+			rv = uvOsWriteOne(fd, output_buffer, output_len, -1,
+					  errmsg);
+			if (rv != RAFT_OK) {
+				goto err_after_ctx_alloc;
+			}
 		}
 	}
 
@@ -771,7 +777,7 @@ int UvFsReadInto(uv_file fd, struct raft_buffer *buf, char *errmsg)
 		if (rv == 0) {
 			break;
 		}
-		assert(rv > 0);
+		dqlite_assert(rv > 0);
 		offset += (size_t)rv;
 	}
 	if (offset < buf->len) {
@@ -810,7 +816,7 @@ int UvFsReadFile(const char *dir,
 	}
 
 	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	buf->len = (size_t)sb.st_size;
 	buf->base = RaftHeapMalloc(buf->len);
@@ -863,21 +869,21 @@ int UvFsReadCompressedFile(const char *dir,
 	}
 
 	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	LZ4F_decompressionContext_t ctx;
 	size_t lzrv = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
 	if (LZ4F_isError(lzrv)) {
 		ErrMsgPrintf(errmsg, "LZ4F_createDecompressionContext %s",
-			LZ4F_getErrorName(lzrv));
+			     LZ4F_getErrorName(lzrv));
 		rv = RAFT_NOMEM;
 		goto err_after_open;
 	}
 
-	/* The proper input size depends a lot on what the maximum block size is, but 
-	 * in general it is possible to be a little bit pessimistic here and use the
-	 * max value, which is 4MiB. */
-	const size_t input_buffer_size =  LZ4_COMPRESSBOUND(4 * 1024 * 1024);
+	/* The proper input size depends a lot on what the maximum block size
+	 * is, but in general it is possible to be a little bit pessimistic here
+	 * and use the max value, which is 4MiB. */
+	const size_t input_buffer_size = LZ4_COMPRESSBOUND(4 * 1024 * 1024);
 	void *input_buffer = raft_malloc(input_buffer_size);
 	if (input_buffer == NULL) {
 		rv = RAFT_NOMEM;
@@ -887,7 +893,8 @@ int UvFsReadCompressedFile(const char *dir,
 	/* Read at least LZ4F_HEADER_SIZE_MAX bytes. */
 	size_t input_size = 0;
 	while (input_size < LZ4F_HEADER_SIZE_MAX) {
-		ssize_t read_rv = read(fd, (char *)input_buffer + input_size, input_buffer_size - input_size);
+		ssize_t read_rv = read(fd, (char *)input_buffer + input_size,
+				       input_buffer_size - input_size);
 		if (read_rv == -1) {
 			rv = RAFT_IOERR;
 			UvOsErrMsg(errmsg, "read", -errno);
@@ -915,7 +922,7 @@ int UvFsReadCompressedFile(const char *dir,
 
 	if (frameInfo.contentSize == 0) {
 		rv = RAFT_OK;
-		goto done; // Not really an error here...
+		goto done;  // Not really an error here...
 	}
 
 	const size_t output_buffer_size = (size_t)frameInfo.contentSize;
@@ -929,14 +936,17 @@ int UvFsReadCompressedFile(const char *dir,
 	while (output_offset < output_buffer_size) {
 		if (input_offset == input_size) {
 			/* try to read some */
-			ssize_t read_rv = read(fd, input_buffer, input_buffer_size);
+			ssize_t read_rv =
+			    read(fd, input_buffer, input_buffer_size);
 			if (read_rv < 0) {
 				UvOsErrMsg(errmsg, "read", -errno);
 				rv = RAFT_IOERR;
 				goto err_after_output_alloc;
 			} else if (read_rv == 0) {
-				ErrMsgPrintf(errmsg, "short read: %zu bytes instead of %zu",
-			     	output_offset, output_buffer_size);
+				ErrMsgPrintf(
+				    errmsg,
+				    "short read: %zu bytes instead of %zu",
+				    output_offset, output_buffer_size);
 				rv = RAFT_IOERR;
 				goto err_after_output_alloc;
 			}
@@ -946,12 +956,12 @@ int UvFsReadCompressedFile(const char *dir,
 
 		size_t output_size = output_buffer_size - output_offset;
 		size_t input_read = input_size - input_offset;
-		lzrv = LZ4F_decompress(ctx, output_buffer + output_offset,
-				&output_size, input_buffer + input_offset,
-				&input_read, NULL);
+		lzrv = LZ4F_decompress(
+		    ctx, output_buffer + output_offset, &output_size,
+		    input_buffer + input_offset, &input_read, NULL);
 		if (LZ4F_isError(lzrv)) {
 			ErrMsgPrintf(errmsg, "LZ4F_decompress %s",
-					LZ4F_getErrorName(lzrv));
+				     LZ4F_getErrorName(lzrv));
 			rv = RAFT_IOERR;
 			goto err_after_output_alloc;
 		}
@@ -960,7 +970,7 @@ int UvFsReadCompressedFile(const char *dir,
 		input_offset += input_read;
 	}
 	rv = RAFT_OK;
-	*buf = (struct raft_buffer) {
+	*buf = (struct raft_buffer){
 		.base = output_buffer,
 		.len = output_buffer_size,
 	};
@@ -1138,9 +1148,9 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 			default:
 				/* UNTESTED: this is an unsupported file system.
 				 */
-				ErrMsgPrintf(errmsg,
-					     "unsupported file system: %llx",
-					     (unsigned long long)fs_info.f_type);
+				ErrMsgPrintf(
+				    errmsg, "unsupported file system: %llx",
+				    (unsigned long long)fs_info.f_type);
 				return RAFT_IOERR;
 		}
 	}
@@ -1160,10 +1170,10 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 			/* Since we fallocate'ed the file, we should never fail
 			 * because of lack of disk space, and all bytes should
 			 * have been written. */
-			assert(rv == (int)(*size));
+			dqlite_assert(rv == (int)(*size));
 			return 0;
 		}
-		assert(rv == -1);
+		dqlite_assert(rv == -1);
 		if (errno != EIO && errno != EOPNOTSUPP) {
 			/* UNTESTED: this should basically fail only because of
 			 * disk errors, since we allocated the file with
@@ -1190,8 +1200,8 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 /* Check if fully non-blocking async I/O is possible on the given fd. */
 static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 {
-	void *buf;                  /* Buffer to use for the probe write */
-	aio_context_t ctx = 0;      /* KAIO context handle */
+	void *buf;             /* Buffer to use for the probe write */
+	aio_context_t ctx = 0; /* KAIO context handle */
 	int n_events;
 	int rv;
 
@@ -1241,7 +1251,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	/* Fetch the response: will block until done. */
 	struct io_event event = {}; /* KAIO response object */
 	n_events = UvOsIoGetevents(ctx, 1, 1, &event, NULL);
-	assert(n_events == 1);
+	dqlite_assert(n_events == 1);
 	if (n_events != 1) {
 		/* UNTESTED */
 		UvOsErrMsg(errmsg, "UvOsIoGetevents", n_events);
@@ -1259,7 +1269,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	}
 
 	if (event.res > 0) {
-		assert(event.res == (int)size);
+		dqlite_assert(event.res == (int)size);
 		*ok = true;
 	} else {
 		/* UNTESTED: this should basically fail only because of disk

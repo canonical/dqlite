@@ -1,16 +1,17 @@
-#include "lib/serialize.h"
+#include <assert.h>
+#include <sys/mman.h>
 
 #include "command.h"
 #include "fsm.h"
 #include "leader.h"
+#include "lib/assert.h"
+#include "lib/serialize.h"
 #include "protocol.h"
 #include "raft.h"
 #include "registry.h"
 #include "tracing.h"
 #include "vfs.h"
 
-#include <assert.h>
-#include <sys/mman.h>
 
 struct fsmDatabaseSnapshot {
 	sqlite3 *conn;
@@ -165,7 +166,7 @@ SERIALIZE__DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
 SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
 
 /* Encode the global snapshot header. */
-static int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
+int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
 {
 	struct snapshotHeader header;
 	char *cursor;
@@ -200,8 +201,8 @@ static int decodeDatabase(const struct registry *r,
 	}
 
 	const size_t page_size = r->config->vfs.page_size;
-	assert((header.main_size % page_size) == 0);
-	assert(header.wal_size == 0);
+	dqlite_assert((header.main_size % page_size) == 0);
+	dqlite_assert(header.wal_size == 0);
 
 	const size_t page_count = (size_t)header.main_size / page_size;
 
@@ -391,11 +392,11 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	buffers[0] = header;
 	unsigned buff_i = 1;
 	for (i = 0; i < database_count; i++) {
-		assert(buff_i < buffer_count);
+		dqlite_assert(buff_i < buffer_count);
 		buffers[buff_i] = databases[i].header;
 		buff_i++;
 
-		assert((buff_i + databases[i].content.page_count) <=
+		dqlite_assert((buff_i + databases[i].content.page_count) <=
 		       buffer_count);
 		for (unsigned j = 0; j < databases[i].content.page_count;
 		     j++) {
@@ -406,7 +407,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 			buff_i++;
 		}
 	}
-	assert(buff_i == buffer_count);
+	dqlite_assert(buff_i == buffer_count);
 
 	f->snapshot = (struct fsmSnapshot){
 		.header = header,

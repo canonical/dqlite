@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "byte.h"
 #include "err.h"
 #include "heap.h"
@@ -90,8 +90,8 @@ static void uvTcpConnectUvCloseCb(struct uv_handle_s *handle)
 {
 	struct uvTcpConnect *connect = handle->data;
 	struct UvTcp *t = connect->t;
-	assert(connect->status != 0);
-	assert(handle == (struct uv_handle_s *)connect->tcp);
+	dqlite_assert(connect->status != 0);
+	dqlite_assert(handle == (struct uv_handle_s *)connect->tcp);
 	RaftHeapFree(connect->tcp);
 	connect->tcp = NULL;
 	uvTcpConnectFinish(connect);
@@ -129,7 +129,7 @@ static void uvTcpConnectUvWriteCb(struct uv_write_s *write, int status)
 	}
 
 	if (status != 0) {
-		assert(status !=
+		dqlite_assert(status !=
 		       UV_ECANCELED); /* t->closing would have been true */
 		connect->status = RAFT_NOCONNECTION;
 		uvTcpConnectAbort(connect);
@@ -160,7 +160,7 @@ static void uvTcpTryNextConnectCb(struct uv_handle_s *handle)
 		return;
 	}
 	rv = uv_tcp_init(t->loop, connect->tcp);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	uvTcpAsyncConnect(connect);
 }
 
@@ -177,7 +177,7 @@ static void uvTcpConnectUvConnectCb(struct uv_connect_s *req, int status)
 	}
 
 	if (status != 0) {
-		assert(status !=
+		dqlite_assert(status !=
 		       UV_ECANCELED); /* t->closing would have been true */
 		connect->ai_current = connect->ai_current->ai_next;
 		if (connect->ai_current) {
@@ -275,7 +275,7 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 	/* Initialize the handshake buffer. */
 	rv = uvTcpEncodeHandshake(t->id, t->address, &r->handshake);
 	if (rv != 0) {
-		assert(rv == RAFT_NOMEM);
+		dqlite_assert(rv == RAFT_NOMEM);
 		ErrMsgOom(t->transport->errmsg);
 		goto err;
 	}
@@ -288,7 +288,7 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 	}
 
 	rv = uv_tcp_init(r->t->loop, r->tcp);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	r->tcp->data = r;
 
 	rv = uvIpAddrSplit(address, hostname, sizeof(hostname), service,
@@ -333,7 +333,7 @@ int UvTcpConnect(struct raft_uv_transport *transport,
 	struct uvTcpConnect *r;
 	int rv;
 	(void)id;
-	assert(!t->closing);
+	dqlite_assert(!t->closing);
 
 	/* Create and initialize a new TCP connection request object */
 	r = RaftHeapMalloc(sizeof *r);

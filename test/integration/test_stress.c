@@ -191,6 +191,9 @@ TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 	if (f->readers == 0 && f->writers == 0) {
 		return MUNIT_SKIP;
 	}
+	if (getenv("SKIP_STRESS") != NULL) {
+		return MUNIT_SKIP;
+	}
 
 	int num_workers = (f->readers + f->writers) * f->databases;
 	struct worker *workers =

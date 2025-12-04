@@ -1,10 +1,8 @@
+#include <sqlite3.h>
 #include <stdint.h>
 
-#include <sqlite3.h>
-
-#include "./lib/assert.h"
-
 #include "format.h"
+#include "lib/assert.h"
 
 /* tinycc doesn't have this builtin, nor the warning that it's meant to silence.
  */
@@ -78,9 +76,9 @@ static void formatWalChecksumBytes(
 		s1 = s2 = 0;
 	}
 
-	assert(n >= 8);
-	assert((n & 0x00000007) == 0);
-	assert(n <= 65536);
+	dqlite_assert(n >= 8);
+	dqlite_assert((n & 0x00000007) == 0);
+	dqlite_assert(n <= 65536);
 
 	if (native) {
 		do {

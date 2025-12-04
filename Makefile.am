@@ -11,22 +11,22 @@ else
 static =
 endif
 
+if BACKTRACE_ENABLED
+AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE $(BACKTRACE_CFLAGS)
+static += $(BACKTRACE_LIBS)
+endif
+
 AM_LDFLAGS = $(static)
 AM_LDFLAGS += $(UV_LIBS) $(PTHREAD_LIBS)
 
 if DEBUG_ENABLED
-AM_CFLAGS += -O0
+AM_CFLAGS += -O0 -g
 else
 AM_CFLAGS += -O2
 endif
 
 if SANITIZE_ENABLED
 AM_CFLAGS += -fsanitize=address
-endif
-
-if BACKTRACE_ENABLED
-AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE -DRAFT_ASSERT_WITH_BACKTRACE
-AM_LDFLAGS += -lbacktrace
 endif
 
 include_HEADERS = include/dqlite.h
@@ -43,6 +43,7 @@ basic_dqlite_sources = \
   src/fsm.c \
   src/gateway.c \
   src/leader.c \
+  src/lib/assert.c \
   src/lib/addr.c \
   src/lib/buffer.c \
   src/lib/sm.c \

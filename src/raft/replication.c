@@ -1,14 +1,11 @@
 #include <string.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
+#include "../lib/queue.h"
+#include "../tracing.h"
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
-#ifdef __GLIBC__
-#include "error.h"
-#endif
-#include "../lib/queue.h"
-#include "../tracing.h"
 #include "err.h"
 #include "flags.h"
 #include "heap.h"
@@ -19,12 +16,8 @@
 #include "request.h"
 #include "snapshot.h"
 
-#ifndef max
-#define max(a, b) ((a) < (b) ? (b) : (a))
-#endif
-
-#ifndef min
-#define min(a, b) ((a) < (b) ? (a) : (b))
+#ifdef __GLIBC__
+# include "error.h"
 #endif
 
 /* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
@@ -49,7 +42,7 @@ static void sendAppendEntriesCb(struct raft_io_send *send, const int status)
 	if (r->state == RAFT_LEADER && i < r->configuration.n) {
 		if (status != 0) {
 			tracef(
-			    "failed to send append entries to server %llu: %s",
+			    "failed to send append entries to server %" PRIu64 ": %s",
 			    req->server_id, raft_strerror(status));
 			/* Go back to probe mode. */
 			progressToProbe(r, i);
@@ -97,7 +90,7 @@ static int sendAppendEntries(struct raft *r,
 	args->leader_commit = r->commit_index;
 
 	tracef(
-	    "send %u entries starting at %llu to server %llu (last index %llu)",
+	    "send %u entries starting at %" PRIu64 " to server %" PRIu64 " (last index %" PRIu64 ")",
 	    args->n_entries, args->prev_log_index, server->id,
 	    logLastIndex(r->log));
 
@@ -135,7 +128,7 @@ err_after_req_alloc:
 err_after_entries_acquired:
 	logRelease(r->log, next_index, args->entries, args->n_entries);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -209,7 +202,7 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
 		goto abort_with_snapshot;
 	}
 
-	assert(snapshot->n_bufs == 1);
+	dqlite_assert(snapshot->n_bufs == 1);
 
 	message.type = RAFT_IO_INSTALL_SNAPSHOT;
 	message.server_id = server->id;
@@ -225,7 +218,7 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
 	req->snapshot = snapshot;
 	req->send.data = req;
 
-	tracef("sending snapshot with last index %llu to %llu", snapshot->index,
+	tracef("sending snapshot with last index %" PRIu64 " to %" PRIu64, snapshot->index,
 	       server->id);
 
 	rv = r->io->send(r->io, &req->send, &message, sendInstallSnapshotCb);
@@ -282,7 +275,7 @@ err_after_req_alloc:
 	raft_free(request);
 err:
 	progressAbortSnapshot(r, i);
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -296,9 +289,9 @@ int replicationProgress(struct raft *r, unsigned i)
 	raft_index prev_index;
 	raft_term prev_term;
 
-	assert(r->state == RAFT_LEADER);
-	assert(server->id != r->id);
-	assert(next_index >= 1);
+	dqlite_assert(r->state == RAFT_LEADER);
+	dqlite_assert(server->id != r->id);
+	dqlite_assert(next_index >= 1);
 
 	if (!progressShouldReplicate(r, i)) {
 		return 0;
@@ -324,7 +317,7 @@ int replicationProgress(struct raft *r, unsigned i)
 		 * one. */
 		if (snapshot_index > 0 && !progress_state_is_snapshot) {
 			raft_index last_index = logLastIndex(r->log);
-			assert(last_index > 0); /* The log can't be empty */
+			dqlite_assert(last_index > 0); /* The log can't be empty */
 			goto send_snapshot;
 		}
 		prev_index = 0;
@@ -337,8 +330,8 @@ int replicationProgress(struct raft *r, unsigned i)
 		/* If the entry is not anymore in our log, send the last
 		 * snapshot if we're not doing so already. */
 		if (prev_term == 0 && !progress_state_is_snapshot) {
-			assert(prev_index < snapshot_index);
-			tracef("missing entry at index %lld -> send snapshot",
+			dqlite_assert(prev_index < snapshot_index);
+			tracef("missing entry at index %" PRIu64 " -> send snapshot",
 			       prev_index);
 			goto send_snapshot;
 		}
@@ -375,7 +368,7 @@ static int triggerAll(struct raft *r)
 	unsigned i;
 	int rv;
 
-	assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_LEADER);
 
 	/* Trigger replication for servers we didn't hear from recently. */
 	for (i = 0; i < r->configuration.n; i++) {
@@ -392,7 +385,7 @@ static int triggerAll(struct raft *r)
 		if (rv != 0 && rv != RAFT_NOCONNECTION) {
 			/* This is not a critical failure, let's just log it. */
 			tracef(
-			    "failed to send append entries to server %llu: %s "
+			    "failed to send append entries to server %" PRIu64 ": %s "
 			    "(%d)",
 			    server->id, raft_strerror(rv), rv);
 		}
@@ -442,7 +435,7 @@ static size_t updateLastStored(struct raft *r,
 
 		/* If we do have an entry at this index, its term must match the
 		 * one of the entry we wrote on disk. */
-		assert(local_term != 0 && local_term == entry->term);
+		dqlite_assert(local_term != 0 && local_term == entry->term);
 	}
 
 	r->last_stored += i;
@@ -466,7 +459,7 @@ static struct request *getRequest(struct raft *r,
 		req = QUEUE_DATA(head, struct request, queue);
 		if (req->index == index) {
 			if (type != -1) {
-				assert(req->type == type);
+				dqlite_assert(req->type == type);
 			}
 			return req;
 		}
@@ -483,7 +476,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 	raft_index index;
 	int rv;
 
-	tracef("leader: written %u entries starting at %lld: status %d",
+	tracef("leader: written %u entries starting at %" PRIu64 ": status %d",
 	       request->n, request->index, status);
 
 	/* In case of a failed disk write, if we were the leader creating these
@@ -499,7 +492,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 			struct request *req =
 			    getRequest(r, request->index + i, -1);
 			if (!req) {
-				tracef("no request found at index %llu",
+				tracef("no request found at index %" PRIu64,
 				       request->index + i);
 				continue;
 			}
@@ -538,7 +531,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 				default:
 					tracef(
 					    "unknown request type, shutdown.");
-					assert(false);
+					dqlite_assert(false);
 					break;
 			}
 		}
@@ -601,9 +594,9 @@ static int appendLeader(struct raft *r, raft_index index)
 	const struct sm *entry_sm;
 	int rv;
 
-	assert(r->state == RAFT_LEADER);
-	assert(index > 0);
-	assert(index > r->last_stored);
+	dqlite_assert(r->state == RAFT_LEADER);
+	dqlite_assert(index > 0);
+	dqlite_assert(index > r->last_stored);
 
 	/* Acquire all the entries from the given index onwards. */
 	rv = logAcquire(r->log, index, &entries, &n);
@@ -614,9 +607,9 @@ static int appendLeader(struct raft *r, raft_index index)
 	/* We expect this function to be called only when there are actually
 	 * some entries to write. */
 	if (n == 0) {
-		assert(false);
-		tracef("No log entries found at index %llu", index);
-		ErrMsgPrintf(r->errmsg, "No log entries found at index %llu",
+		dqlite_assert(false);
+		tracef("No log entries found at index %" PRIu64, index);
+		ErrMsgPrintf(r->errmsg, "No log entries found at index %" PRIu64,
 			     index);
 		rv = RAFT_SHUTDOWN;
 		goto err_after_entries_acquired;
@@ -653,7 +646,7 @@ err_in_append:
 err_after_entries_acquired:
 	logRelease(r->log, index, entries, n);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -684,16 +677,16 @@ static int triggerActualPromotion(struct raft *r)
 	int old_role;
 	int rv;
 
-	assert(r->state == RAFT_LEADER);
-	assert(r->leader_state.promotee_id != 0);
+	dqlite_assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->leader_state.promotee_id != 0);
 
 	server_index = configurationIndexOf(&r->configuration,
 					    r->leader_state.promotee_id);
-	assert(server_index < r->configuration.n);
+	dqlite_assert(server_index < r->configuration.n);
 
 	server = &r->configuration.servers[server_index];
 
-	assert(server->role != RAFT_VOTER);
+	dqlite_assert(server->role != RAFT_VOTER);
 
 	/* Update our current configuration. */
 	old_role = server->role;
@@ -726,7 +719,7 @@ err_after_log_append:
 err:
 	server->role = old_role;
 
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -741,8 +734,8 @@ int replicationUpdate(struct raft *r,
 
 	i = configurationIndexOf(&r->configuration, server->id);
 
-	assert(r->state == RAFT_LEADER);
-	assert(i < r->configuration.n);
+	dqlite_assert(r->state == RAFT_LEADER);
+	dqlite_assert(i < r->configuration.n);
 
 	progressMarkRecentRecv(r, i);
 
@@ -763,7 +756,7 @@ int replicationUpdate(struct raft *r,
 					       result->last_log_index);
 		if (retry) {
 			/* Retry, ignoring errors. */
-			tracef("log mismatch -> send old entries to %llu",
+			tracef("log mismatch -> send old entries to %" PRIu64,
 			       server->id);
 			replicationProgress(r, i);
 		}
@@ -873,7 +866,7 @@ static void sendAppendEntriesResult(
 	struct raft_io_send *req;
 	int rv;
 
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 	message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
 	message.server_id = r->follower_state.current_leader.id;
 	message.server_address = r->follower_state.current_leader.address;
@@ -947,14 +940,14 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
 
 	tracef("I/O completed on follower: status %d", status);
 
-	assert(args->entries != NULL);
-	assert(args->n_entries > 0);
+	dqlite_assert(args->entries != NULL);
+	dqlite_assert(args->n_entries > 0);
 
-	assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
+	dqlite_assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
 	if (r->state == RAFT_UNAVAILABLE) {
 		goto out;
 	}
-	assert(r->follower_state.append_in_flight_count > 0);
+	dqlite_assert(r->follower_state.append_in_flight_count > 0);
 	r->follower_state.append_in_flight_count -= 1;
 
 	result.term = r->current_term;
@@ -987,7 +980,7 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
 		raft_index index = request->index + j;
 		raft_term local_term = logTermOf(r->log, index);
 
-		assert(local_term != 0 && local_term == entry->term);
+		dqlite_assert(local_term != 0 && local_term == entry->term);
 
 		if (entry->type == RAFT_CHANGE) {
 			rv = membershipUncommittedChange(r, index, entry);
@@ -1068,7 +1061,7 @@ static int checkLogMatchingProperty(struct raft *r,
 
 	local_prev_term = logTermOf(r->log, args->prev_log_index);
 	if (local_prev_term == 0) {
-		tracef("no entry at index %llu -> reject",
+		tracef("no entry at index %" PRIu64 " -> reject",
 		       args->prev_log_index);
 		return 1;
 	}
@@ -1077,9 +1070,8 @@ static int checkLogMatchingProperty(struct raft *r,
 		if (args->prev_log_index <= r->commit_index) {
 			/* Should never happen; something is seriously wrong! */
 			tracef(
-			    "conflicting terms %llu and %llu for entry %llu "
-			    "(commit "
-			    "index %llu) -> shutdown",
+			    "conflicting terms %" PRIu64 " and %" PRIu64 " for entry %" PRIu64
+			    " (commit index %" PRIu64 ") -> shutdown",
 			    local_prev_term, args->prev_log_term,
 			    args->prev_log_index, r->commit_index);
 			return -1;
@@ -1127,7 +1119,7 @@ static int deleteConflictingEntries(struct raft *r,
 				return RAFT_SHUTDOWN;
 			}
 
-			tracef("log mismatch -> truncate (%llu)", entry_index);
+			tracef("log mismatch -> truncate (%" PRIu64 ")", entry_index);
 
 			/* Possibly discard uncommitted configuration changes.
 			 */
@@ -1153,9 +1145,9 @@ static int deleteConflictingEntries(struct raft *r,
 			}
 			for (raft_index x = entry_index; x <= logLastIndex(r->log); x++) {
 				const struct raft_entry *e = logGet(r->log, x);
-				assert(e != NULL);
+				dqlite_assert(e != NULL);
 				const struct sm *entry_sm = log_get_entry_sm(r->log, e->term, x);
-				assert(entry_sm != NULL);
+				dqlite_assert(entry_sm != NULL);
 				sm_relate(append_sm, entry_sm);
 			}
 			logTruncate(r->log, entry_index);
@@ -1195,12 +1187,12 @@ int replicationAppend(struct raft *r,
 	const struct sm *entry_sm;
 	int rv;
 
-	assert(r != NULL);
-	assert(args != NULL);
-	assert(rejected != NULL);
-	assert(async != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(args != NULL);
+	dqlite_assert(rejected != NULL);
+	dqlite_assert(async != NULL);
 
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 
 	request = raft_malloc(sizeof *request);
 	if (request == NULL) {
@@ -1219,7 +1211,7 @@ int replicationAppend(struct raft *r,
 		append_follower_done(request, 0);
 		return 0;
 	} else if (match != 0) {
-		assert(match == -1);
+		dqlite_assert(match == -1);
 		rv = RAFT_SHUTDOWN;
 		goto err_after_request_alloc;
 	}
@@ -1314,7 +1306,7 @@ int replicationAppend(struct raft *r,
 		}
 
 		entry_sm = log_get_entry_sm(r->log, entry->term, request->index + j);
-		assert(entry_sm != NULL);
+		dqlite_assert(entry_sm != NULL);
 		sm_relate(&request->sm, entry_sm);
 	}
 
@@ -1325,10 +1317,10 @@ int replicationAppend(struct raft *r,
 		goto err_after_log_append;
 	}
 
-	assert(request->args.n_entries == n);
+	dqlite_assert(request->args.n_entries == n);
 	if (request->args.n_entries == 0) {
-		tracef("No log entries found at index %llu", request->index);
-		ErrMsgPrintf(r->errmsg, "No log entries found at index %llu",
+		tracef("No log entries found at index %" PRIu64, request->index);
+		ErrMsgPrintf(r->errmsg, "No log entries found at index %" PRIu64,
 			     request->index);
 		rv = RAFT_SHUTDOWN;
 		goto err_after_acquire_entries;
@@ -1370,7 +1362,7 @@ err_after_request_alloc:
 	append_follower_done(request, rv);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -1392,7 +1384,7 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
 
 	/* We avoid converting to candidate state while installing a snapshot.
 	 */
-	assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
+	dqlite_assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
 
 	r->snapshot.put.data = NULL;
 
@@ -1421,7 +1413,7 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
 	}
 
 	if (status != 0) {
-		tracef("save snapshot %llu: %s", snapshot->index,
+		tracef("save snapshot %" PRIu64 ": %s", snapshot->index,
 		       raft_strerror(status));
 		goto discard;
 	}
@@ -1434,12 +1426,12 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
 	 */
 	rv = snapshotRestore(r, snapshot);
 	if (rv != 0) {
-		tracef("restore snapshot %llu: %s", snapshot->index,
+		tracef("restore snapshot %" PRIu64 ": %s", snapshot->index,
 		       raft_strerror(status));
 		goto discard;
 	}
 
-	tracef("restored snapshot with last index %llu", snapshot->index);
+	tracef("restored snapshot with last index %" PRIu64, snapshot->index);
 
 	goto respond;
 
@@ -1470,7 +1462,7 @@ int replicationInstallSnapshot(struct raft *r,
 	raft_term local_term;
 	int rv;
 
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 
 	*rejected = args->last_index;
 	*async = false;
@@ -1528,7 +1520,7 @@ int replicationInstallSnapshot(struct raft *r,
 	snapshot->bufs[0] = args->data;
 	snapshot->n_bufs = 1;
 
-	assert(r->snapshot.put.data == NULL);
+	dqlite_assert(r->snapshot.put.data == NULL);
 	r->snapshot.put.data = request;
 	rv = r->io->snapshot_put(r->io,
 				 0 /* zero trailing means replace everything */,
@@ -1546,7 +1538,7 @@ err_after_bufs_alloc:
 err_after_request_alloc:
 	raft_free(request);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -1604,7 +1596,7 @@ static void applyChange(struct raft *r, const raft_index index)
 {
 	struct raft_change *req;
 
-	assert(index > 0);
+	dqlite_assert(index > 0);
 
 	/* If this is an uncommitted configuration that we had already applied
 	 * when submitting the configuration change (for leaders) or upon
@@ -1612,7 +1604,7 @@ static void applyChange(struct raft *r, const raft_index index)
 	 * uncommitted index, since that uncommitted configuration is now
 	 * committed. */
 	if (r->configuration_uncommitted_index == index) {
-		tracef("configuration at index:%llu is committed.", index);
+		tracef("configuration at index: %" PRIu64 " is committed.", index);
 		r->configuration_uncommitted_index = 0;
 	}
 
@@ -1741,7 +1733,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
 	snapshot = &r->snapshot.pending;
 
 	if (status != 0) {
-		tracef("snapshot %lld at term %lld: %s", snapshot->index,
+		tracef("snapshot %" PRIu64 " at term %" PRIu64 ": %s", snapshot->index,
 		       snapshot->term, raft_strerror(status));
 		goto out;
 	}
@@ -1770,7 +1762,7 @@ static int putSnapshot(struct raft *r,
 		       raft_io_snapshot_put_cb cb)
 {
 	int rv;
-	assert(r->snapshot.put.data == NULL);
+	dqlite_assert(r->snapshot.put.data == NULL);
 	r->snapshot.put.data = r;
 	rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &r->snapshot.put,
 				 snapshot, cb);
@@ -1808,7 +1800,7 @@ static void takeSnapshotDoneCb(struct raft_io_async_work *take, int status)
 static int takeSnapshotAsync(struct raft_io_async_work *take)
 {
 	struct raft *r = take->data;
-	tracef("take snapshot async at %lld", r->snapshot.pending.index);
+	tracef("take snapshot async at %" PRIu64, r->snapshot.pending.index);
 	struct raft_snapshot *snapshot = &r->snapshot.pending;
 	return r->fsm->snapshot_async(r->fsm, &snapshot->bufs,
 				      &snapshot->n_bufs);
@@ -1819,7 +1811,7 @@ static int takeSnapshot(struct raft *r)
 	struct raft_snapshot *snapshot;
 	int rv;
 
-	tracef("take snapshot at %lld", r->last_applied);
+	tracef("take snapshot at %" PRIu64, r->last_applied);
 
 	snapshot = &r->snapshot.pending;
 	snapshot->index = r->last_applied;
@@ -1880,15 +1872,15 @@ int replicationApply(struct raft *r)
 	raft_index index;
 	int rv = 0;
 
-	assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
-	assert(r->last_applied <= r->commit_index);
+	dqlite_assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->last_applied <= r->commit_index);
 
 	if (r->last_applied == r->commit_index) {
 		/* Nothing to do. */
 		return 0;
 	}
 
-	tracef("Apply indexed %d...%d", r->last_applied, r->commit_index);
+	tracef("Apply indexed %" PRIu64 "...%" PRIu64, (uint64_t)r->last_applied, (uint64_t)r->commit_index);
 	for (index = r->last_applied + 1; index <= r->commit_index; index++) {
 		const struct raft_entry *entry = logGet(r->log, index);
 		if (entry == NULL) {
@@ -1900,9 +1892,9 @@ int replicationApply(struct raft *r)
 		raft_index entry_sm_index = index;
 		struct sm *entry_sm = log_get_entry_sm(r->log, entry_sm_term,
 						       entry_sm_index);
-		assert(entry_sm != NULL);
+		dqlite_assert(entry_sm != NULL);
 
-		assert(entry->type == RAFT_COMMAND ||
+		dqlite_assert(entry->type == RAFT_COMMAND ||
 		       entry->type == RAFT_BARRIER ||
 		       entry->type == RAFT_CHANGE);
 
@@ -1930,7 +1922,7 @@ int replicationApply(struct raft *r)
 			 * to the entry_sm may be no longer valid. */
 			entry_sm = log_get_entry_sm(r->log, entry_sm_term,
 						    entry_sm_index);
-			assert(entry_sm != NULL);
+			dqlite_assert(entry_sm != NULL);
 			sm_move(entry_sm, ENTRY_APPLIED);
 		} else {
 			break;
@@ -1952,7 +1944,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 	size_t i;
 	raft_term term;
 
-	assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_LEADER);
 
 	if (index <= r->commit_index) {
 		return;
@@ -1965,8 +1957,8 @@ void replicationQuorum(struct raft *r, const raft_index index)
 	if (term == 0) {
 		return;
 	}
-	// assert(logTermOf(r->log, index) > 0);
-	assert(!(term > r->current_term));
+	// dqlite_assert(logTermOf(r->log, index) > 0);
+	dqlite_assert(!(term > r->current_term));
 
 	/* Don't commit entries from previous terms by counting replicas. */
 	if (term < r->current_term) {
@@ -1985,7 +1977,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 
 	if (votes > configurationVoterCount(&r->configuration) / 2) {
 		r->commit_index = index;
-		tracef("new commit index %llu", r->commit_index);
+		tracef("new commit index %" PRIu64, r->commit_index);
 	}
 
 	return;

@@ -4,9 +4,8 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/assert.h"
-
 #include "db.h"
+#include "lib/assert.h"
 #include "tracing.h"
 
 /* Limit taken from sqlite unix vfs. */
@@ -51,7 +50,7 @@ int db__init(struct db *db, struct config *config, const char *filename)
 
 void db__close(struct db *db)
 {
-	assert(db->leaders == 0);
+	dqlite_assert(db->leaders == 0);
 	sqlite3_free(db->filename);
 }
 

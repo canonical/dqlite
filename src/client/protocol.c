@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include "../lib/assert.h"
-
 #include "../message.h"
 #include "../protocol.h"
 #include "../request.h"
@@ -137,7 +136,7 @@ static ssize_t doRead(int fd,
 	total = 0;
 	while ((size_t)total < buf_len) {
 		rv = clock_gettime(CLOCK_REALTIME, &now);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 		if (context != NULL) {
 			millis =
 			    (context->deadline.tv_sec - now.tv_sec) * 1000 +
@@ -164,7 +163,7 @@ static ssize_t doRead(int fd,
 			/* Timeout */
 			break;
 		}
-		assert(rv == 1);
+		dqlite_assert(rv == 1);
 		if (pfd.revents != POLLIN) {
 			/* If some other bits are set in the out parameter, an
 			 * error occurred. */
@@ -217,7 +216,7 @@ static ssize_t doWrite(int fd,
 	total = 0;
 	while ((size_t)total < buf_len) {
 		rv = clock_gettime(CLOCK_REALTIME, &now);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 		if (context != NULL) {
 			millis =
 			    (context->deadline.tv_sec - now.tv_sec) * 1000 +
@@ -244,7 +243,7 @@ static ssize_t doWrite(int fd,
 			/* Timeout */
 			break;
 		}
-		assert(rv == 1);
+		dqlite_assert(rv == 1);
 		if (pfd.revents != POLLOUT) {
 			/* If some other bits are set in the out parameter, an
 			 * error occurred. */
@@ -293,7 +292,7 @@ void clientContextMillis(struct client_context *context, long millis)
 {
 	int rv;
 	rv = clock_gettime(CLOCK_REALTIME, &context->deadline);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	context->deadline.tv_nsec += millis * 1000000;
 	while (context->deadline.tv_nsec >= 1000000000) {
 		context->deadline.tv_nsec -= 1000000000;
@@ -355,7 +354,7 @@ int clientSendHandshake(struct client_proto *c, struct client_context *context)
 
 	rv = doWrite(c->fd, &protocol, sizeof protocol, context);
 	if (rv < 0) {
-		tracef("client send handshake failed %zd", rv);
+		tracef("client send handshake failed %" PRId64, (int64_t)rv);
 		return DQLITE_CLIENT_PROTO_ERROR;
 	} else if ((size_t)rv < sizeof protocol) {
 		return DQLITE_CLIENT_PROTO_SHORT;
@@ -383,7 +382,7 @@ static int writeMessage(struct client_proto *c,
 	message__encode(&message, &cursor);
 	rv = doWrite(c->fd, buffer__cursor(&c->write, 0), n, context);
 	if (rv < 0) {
-		tracef("request write failed rv:%zd", rv);
+		tracef("request write failed rv: %" PRId64, (int64_t)rv);
 		return DQLITE_CLIENT_PROTO_ERROR;
 	} else if ((size_t)rv < n) {
 		return DQLITE_CLIENT_PROTO_SHORT;
@@ -404,7 +403,7 @@ static int writeMessage(struct client_proto *c,
 		if (_cursor == NULL) {                           \
 			oom();                                   \
 		}                                                \
-		assert(_n2 % 8 == 0);                            \
+		dqlite_assert(_n2 % 8 == 0);                            \
 		message__encode(&_message, &_cursor);            \
 		request_##LOWER##__encode(&request, &_cursor);   \
 	}
@@ -448,7 +447,7 @@ static int readMessage(struct client_proto *c,
 	cursor.cap = n;
 	rv = message__decode(&cursor, &message);
 	if (rv != 0) {
-		tracef("message decode failed rv:%zd", rv);
+		tracef("message decode failed rv: %" PRId64, (int64_t)rv);
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 
@@ -735,7 +734,7 @@ int clientRecvRows(struct client_proto *c,
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	rows->column_count = (unsigned)column_count;
-	assert((uint64_t)rows->column_count == column_count);
+	dqlite_assert((uint64_t)rows->column_count == column_count);
 
 	rows->column_names =
 	    callocChecked(rows->column_count, sizeof *rows->column_names);
@@ -791,7 +790,7 @@ int clientRecvRows(struct client_proto *c,
 		last = row;
 	}
 
-	assert(eof == DQLITE_RESPONSE_ROWS_DONE ||
+	dqlite_assert(eof == DQLITE_RESPONSE_ROWS_DONE ||
 	       eof == DQLITE_RESPONSE_ROWS_PART);
 	if (done != NULL) {
 		*done = eof == DQLITE_RESPONSE_ROWS_DONE;
@@ -878,7 +877,7 @@ int clientSendAssign(struct client_proto *c,
 		     struct client_context *context)
 {
 	tracef("client send assign id %" PRIu64 " role %d", id, role);
-	assert(role == DQLITE_VOTER || role == DQLITE_STANDBY ||
+	dqlite_assert(role == DQLITE_VOTER || role == DQLITE_STANDBY ||
 	       role == DQLITE_SPARE);
 	struct request_assign request;
 	request.id = id;
@@ -902,8 +901,8 @@ int clientSendDump(struct client_proto *c, struct client_context *context)
 {
 	tracef("client send dump");
 	struct request_dump request;
-	assert(c->db_is_init);
-	assert(c->db_name != NULL);
+	dqlite_assert(c->db_is_init);
+	dqlite_assert(c->db_name != NULL);
 	request.filename = c->db_name;
 	REQUEST(dump, DUMP, 0);
 	return 0;
@@ -1018,7 +1017,7 @@ int clientRecvServers(struct client_proto *c,
 	RESPONSE(servers, SERVERS);
 
 	n = (size_t)response.n;
-	assert((uint64_t)n == response.n);
+	dqlite_assert((uint64_t)n == response.n);
 	struct client_node_info *srvs = callocChecked(n, sizeof *srvs);
 	for (; i < response.n; ++i) {
 		rv = uint64__decode(&cursor, &srvs[i].id);
@@ -1070,7 +1069,7 @@ int clientRecvFiles(struct client_proto *c,
 	RESPONSE(files, FILES);
 
 	n = (size_t)response.n;
-	assert((uint64_t)n == response.n);
+	dqlite_assert((uint64_t)n == response.n);
 	fs = callocChecked(n, sizeof *fs);
 	for (; i < response.n; ++i) {
 		rv = text__decode(&cursor, &raw_name);
@@ -1089,7 +1088,7 @@ int clientRecvFiles(struct client_proto *c,
 			goto err_after_alloc_fs;
 		}
 		z = (size_t)fs[i].size;
-		assert((uint64_t)z == fs[i].size);
+		dqlite_assert((uint64_t)z == fs[i].size);
 		fs[i].blob = mallocChecked(z);
 		memcpy(fs[i].blob, cursor.p, z);
 	}

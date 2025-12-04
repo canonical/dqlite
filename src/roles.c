@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include "client/protocol.h"
+#include "lib/assert.h"
 #include "lib/queue.h"
 #include "raft.h"
 #include "roles.h"
@@ -408,7 +409,7 @@ static void pollClusterAfterWorkCb(uv_work_t *work, int status)
 
 	/* The only path to status != 0 involves calling uv_cancel on this task,
 	 * which we don't do. */
-	assert(status == 0);
+	dqlite_assert(status == 0);
 
 	*polling->count += 1;
 	/* If all nodes have been polled, invoke the callback. */
@@ -486,7 +487,7 @@ static void pollCluster(struct dqlite_node *d, void (*cb)(struct polling *))
 		rv = uv_queue_work(&d->loop, work, pollClusterWorkCb,
 				   pollClusterAfterWorkCb);
 		/* uv_queue_work can't fail unless a NULL callback is passed. */
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 	}
 	return;
 
@@ -669,7 +670,7 @@ void RolesAdjust(struct dqlite_node *d)
 	if (!queue_empty(&d->roles_changes)) {
 		return;
 	}
-	assert(d->running);
+	dqlite_assert(d->running);
 	pollCluster(d, adjustClusterCb);
 }
 

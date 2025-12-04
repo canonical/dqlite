@@ -1,16 +1,13 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <sqlite3.h>
 #include <uv.h>
 
 #include "../include/dqlite.h"
 
-#include "./lib/assert.h"
-
 #include "error.h"
+#include "lib/assert.h"
 
 /* Fallback message returned when failing to allocate the error message
  * itself. */
@@ -37,7 +34,7 @@ static void dqlite__error_vprintf(dqlite__error *e,
 				  const char *fmt,
 				  va_list args)
 {
-	assert(fmt != NULL);
+	dqlite_assert(fmt != NULL);
 
 	/* If a previous error was set (other than the hard-coded OOM fallback
 	 * fallback), let's free it. */
@@ -127,8 +124,8 @@ int dqlite__error_copy(dqlite__error *e, char **msg)
 	char *copy;
 	size_t len;
 
-	assert(e != NULL);
-	assert(msg != NULL);
+	dqlite_assert(e != NULL);
+	dqlite_assert(msg != NULL);
 
 	/* Trying to copy an empty error message is an error. */
 	if (*e == NULL) {

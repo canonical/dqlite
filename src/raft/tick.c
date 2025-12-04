@@ -1,6 +1,6 @@
+#include "../lib/assert.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
@@ -14,8 +14,8 @@ static int tickFollower(struct raft *r)
 	const struct raft_server *server;
 	int rv;
 
-	assert(r != NULL);
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r != NULL);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 
 	server = configurationGet(&r->configuration, r->id);
 
@@ -67,8 +67,8 @@ static int tickFollower(struct raft *r)
 /* Apply time-dependent rules for candidates (Figure 3.1). */
 static int tickCandidate(struct raft *r)
 {
-	assert(r != NULL);
-	assert(r->state == RAFT_CANDIDATE);
+	dqlite_assert(r != NULL);
+	dqlite_assert(r->state == RAFT_CANDIDATE);
 
 	/* Check if we need to start an election.
 	 *
@@ -100,7 +100,7 @@ static bool checkContactQuorum(struct raft *r)
 {
 	unsigned i;
 	unsigned contacts = 0;
-	assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_LEADER);
 
 	for (i = 0; i < r->configuration.n; i++) {
 		struct raft_server *server = &r->configuration.servers[i];
@@ -119,7 +119,7 @@ static bool checkContactQuorum(struct raft *r)
 static int tickLeader(struct raft *r)
 {
 	raft_time now = r->io->time(r->io);
-	assert(r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_LEADER);
 
 	/* Check if we still can reach a majority of servers.
 	 *
@@ -173,8 +173,8 @@ static int tickLeader(struct raft *r)
 		 * promoted, and that the server is not yet considered as
 		 * voting. */
 		server_index = configurationIndexOf(&r->configuration, id);
-		assert(server_index < r->configuration.n);
-		assert(r->configuration.servers[server_index].role !=
+		dqlite_assert(server_index < r->configuration.n);
+		dqlite_assert(r->configuration.servers[server_index].role !=
 		       RAFT_VOTER);
 
 		is_too_slow =
@@ -187,7 +187,7 @@ static int tickLeader(struct raft *r)
 		 * still taking too long, or if the server is unresponsive. */
 		if (is_too_slow || is_unresponsive) {
 			tracef(
-			    "server_index:%d is_too_slow:%d is_unresponsive:%d",
+			    "server_index:%u is_too_slow:%d is_unresponsive:%d",
 			    server_index, is_too_slow, is_unresponsive);
 			struct raft_change *change;
 
@@ -212,7 +212,7 @@ static int tick(struct raft *r)
 {
 	int rv = -1;
 
-	assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
+	dqlite_assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
 	       r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
 
 	/* If we are not available, let's do nothing. */

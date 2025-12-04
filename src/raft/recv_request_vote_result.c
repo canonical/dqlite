@@ -1,7 +1,7 @@
 #include "recv_request_vote_result.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
@@ -19,12 +19,12 @@ int recvRequestVoteResult(struct raft *r,
 
 	(void)address;
 
-	assert(r != NULL);
-	assert(id > 0);
+	dqlite_assert(r != NULL);
+	dqlite_assert(id > 0);
 
 	tracef(
-	    "self:%llu from:%llu@%s term:%llu vote_granted:%d pre_vote:%d "
-	    "version:%d",
+	    "self: %" PRIu64 " from: %" PRIu64 "@%s term: %" PRIu64 " vote_granted: %d pre_vote: %d "
+	    "version: %d",
 	    r->id, id, address, result->term, result->vote_granted,
 	    result->pre_vote, result->version);
 	votes_index = configurationIndexOfVoter(&r->configuration, id);
@@ -92,13 +92,13 @@ int recvRequestVoteResult(struct raft *r,
 	if (r->candidate_state.in_pre_vote) {
 		if (match > 0) {
 			if (result->term > r->current_term + 1) {
-				assert(!result->vote_granted);
+				dqlite_assert(!result->vote_granted);
 				rv = recvBumpCurrentTerm(r, result->term);
 				return rv;
 			}
 		}
 	} else {
-		assert(result->term == r->current_term);
+		dqlite_assert(result->term == r->current_term);
 	}
 
 	/* If the vote was granted and we reached quorum, convert to leader.
