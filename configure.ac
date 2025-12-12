@@ -66,6 +66,12 @@ AC_ARG_WITH(static-deps,
 			   [skip building a shared library and link test binaries statically]))
 AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" = "xyes")
 
+# Add flags for dead code elimination
+AX_CHECK_COMPILE_FLAG([-fdata-sections],
+  [AM_CFLAGS="$AM_CFLAGS -fdata-sections"])
+AX_CHECK_COMPILE_FLAG([-ffunction-sections],
+  [AM_CFLAGS="$AM_CFLAGS -ffunction-sections"])
+
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 
