@@ -241,7 +241,6 @@ static int decodeDatabase(const struct registry *r,
 				return RAFT_NOMEM;
 			}
 			pages = wal_pages;
-			page_count = wal_page_count;
 		}
 
 		/* Read pages in the WAL order */
@@ -249,13 +248,26 @@ static int decodeDatabase(const struct registry *r,
 		     frame < wal + header.wal_size; frame += wal_frame_size) {
 			uint32_t page_number =
 			    ByteGetBe32((const uint8_t *)frame);
-			if (page_number >= page_count) {
+			if (page_number > wal_page_count) {
 				continue;
 			}
 			dqlite_assert(page_number > 0);
 			pages[page_number - 1] =
 			    (void *)(frame + wal_frame_header_size);
 		}
+
+		/* Verify that if the WAL resized the database, then no page is
+		 * missing. */
+		for (size_t page_number = page_count;
+		     page_number <= wal_page_count; page_number++) {
+			if (pages[page_number - 1] == NULL) {
+				tracef("missing page %" PRIu64 " in wal",
+				       (uint64_t)(page_number));
+				raft_free(pages);
+				return RAFT_INVALID;
+			}
+		}
+		page_count = wal_page_count;
 	}
 	cursor->p += header.wal_size;
 
