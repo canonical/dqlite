@@ -19,6 +19,9 @@
 extern MunitSuite _main_suites[];
 extern int _main_suites_n;
 
+extern MunitArgument _main_args[];
+extern int _main_args_n;
+
 /* Maximum number of test cases for each suite */
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
@@ -90,12 +93,14 @@ extern int _main_suites_n;
 	} while (0)
 
 #else
-# error "backtrace enabled, but no library to support it"
+#error "backtrace enabled, but no library to support it"
 #endif /* HAVE_EXECINFO_H */
 
 #else
 
-#define PRINT_BACKTRACE(SKIP) do {} while (0)
+#define PRINT_BACKTRACE(SKIP) \
+	do {                  \
+	} while (0)
 
 #endif /* DQLITE_ASSERT_WITH_BACKTRACE */
 
@@ -128,14 +133,47 @@ extern int _main_suites_n;
 	MunitSuite _main_suites[SUITE__CAP];                                  \
 	int _main_suites_n = 0;                                               \
                                                                               \
+	MunitArgument _main_args[SUITE__CAP] = {};                            \
+	int _main_args_n = 0;                                                 \
+                                                                              \
 	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])               \
 	{                                                                     \
 		signal(SIGPIPE, SIG_IGN);                                     \
 		signal(SIGABRT, print_backtrace);                             \
 		dqliteTracingMaybeEnable(true);                               \
 		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
-		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
+		return munit_suite_main_custom(&suite, (void *)NAME, argc,    \
+					       argv, _main_args);             \
 	}
+
+/* Declare and register a new argument. */
+#define RUNNER_ARGUMENT(NAME, HELP_STR)                                       \
+	static bool argument_##NAME##_parse(                                  \
+	    const MunitSuite *suite, void *user_data, int *arg, int argc,     \
+	    char *const argv[MUNIT_ARRAY_PARAM(argc)]);                       \
+	static void argument_##NAME##_help(const MunitArgument *argument,     \
+					   void *user_data)                   \
+	{                                                                     \
+		(void)user_data;                                              \
+		printf("--%s: %s", argument->name, HELP_STR);                 \
+	}                                                                     \
+	__attribute__((constructor)) static void argument_##NAME##_init(void) \
+	{                                                                     \
+		int n = _main_args_n;                                         \
+		_main_args[n].name = #NAME;                                   \
+		_main_args[n].parse_argument = argument_##NAME##_parse;       \
+		_main_args[n].write_help = argument_##NAME##_help;            \
+		_main_args_n = n + 1;                                         \
+	}                                                                     \
+	static bool argument_##NAME##_parse(                                  \
+	    MUNIT_UNUSED const MunitSuite *suite,                             \
+	    MUNIT_UNUSED void *user_data, MUNIT_UNUSED int *arg,              \
+	    MUNIT_UNUSED int argc,                                            \
+	    MUNIT_UNUSED char *const argv[MUNIT_ARRAY_PARAM(argc)])
+
+#define CURRENT_ARG (argv[*arg])
+#define NEXT_ARG (argc > *arg + 1 ? argv[*arg + 1] : NULL)
+#define SHIFT (*arg)++
 
 /* Declare and register a new test suite #S belonging to the file's test module.
  *
