@@ -74,7 +74,7 @@ jobs:
           ./test/raft/lib/fs.sh setup
           export $(./test/raft/lib/fs.sh detect)
           sudo \
-              DQLITE_TEST_SNAPSHOT_DIRS=$(echo test-snapshots/*/ | tr ' ' :) \
+              DQLITE_TEST_SNAPSHOT_DIRS=$(shopt -s nullglob; echo test-snapshots/*/ | tr ' ' :) \
               UV_THREADPOOL_SIZE=$(($(nproc) * 2)) \
             make check || (cat test-suite.log && false)
           ./test/raft/lib/fs.sh teardown
