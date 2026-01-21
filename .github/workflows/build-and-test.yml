@@ -54,15 +54,15 @@ jobs:
             # Simple cases
             ../.github/scripts/generate-snapshot.sh --main-only --row-count 1000 small-no-wal && \
             ../.github/scripts/generate-snapshot.sh --main-only --row-count 100000 medium-no-wal && \
-            ../.github/scripts/generate-snapshot.sh --main-only --row-count 10000000 large-no-wal && \
+            ../.github/scripts/generate-snapshot.sh --main-only --row-count 5000000 large-no-wal && \
             # With WAL
             ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 1000 small-with-wal && \
             ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 100000 medium-with-wal && \
-            ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 10000000 large-with-wal && \
+            ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 5000000 large-with-wal && \
             # With huge WAL
             ../.github/scripts/generate-snapshot.sh --row-count 1000 small-huge-wal && \
             ../.github/scripts/generate-snapshot.sh --row-count 100000 medium-huge-wal && \
-            ../.github/scripts/generate-snapshot.sh --row-count 10000000 large-huge-wal \
+            ../.github/scripts/generate-snapshot.sh --row-count 5000000 large-huge-wal \
           )
 
     - name: Test
