@@ -76,9 +76,9 @@ $SQLITE3_CHECKPOINT_ON_CLOSE
 CREATE TABLE test(id INTEGER PRIMARY KEY, value TEXT NOT NULL);
 WITH sequence AS (
    SELECT 1 AS id
-   
+
    UNION ALL
-   
+
    SELECT id + 1
    FROM sequence
    WHERE id < $ROW_COUNT
