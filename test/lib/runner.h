@@ -155,7 +155,7 @@ extern int _main_args_n;
 					   void *user_data)                   \
 	{                                                                     \
 		(void)user_data;                                              \
-		printf("--%s: %s", argument->name, HELP_STR);                 \
+		printf("--%s: %s\n", argument->name, HELP_STR);               \
 	}                                                                     \
 	__attribute__((constructor)) static void argument_##NAME##_init(void) \
 	{                                                                     \

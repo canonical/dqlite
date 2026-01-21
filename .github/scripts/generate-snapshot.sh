@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
 			usage
 			;;
 		*)
-			if [ -n "$2" ]; then
+			if [ -n "$1" ]; then
                 echo "Error: unknown option '$1'" >&2
                 usage
             fi

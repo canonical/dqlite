@@ -309,12 +309,9 @@ TEST(node, existing_snapshot, setUpExistingSnapshot, tearDownKeepDir, 0, test_sn
 
 	rv = openDb(&client, f->node, "test");
 	munit_assert_int(rv, ==, RAFT_OK);
-	rv = clientSendQuerySQL(&client, 
-		"SELECT COUNT(*) FROM test",
-		NULL, 0, NULL
-	);
+	rv = clientSendQuerySQL(&client, "SELECT COUNT(*) FROM test", NULL, 0,
+				NULL);
 	munit_assert_int(rv, ==, RAFT_OK);
-	
 	bool done;
 	rv = clientRecvRows(&client, &rows, &done, NULL);
 	munit_assert_int(rv, ==, RAFT_OK);

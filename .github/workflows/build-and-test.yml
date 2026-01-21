@@ -28,14 +28,6 @@ jobs:
           sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev xfslibs-dev \
                               linux-libc-dev btrfs-progs xfsprogs zfsutils-linux \
                               lcov sqlite3
-          # Get dqlite-utils tool by downloading prebuilt binary. Eventually we will
-          # replace this with a proper package installation or with a snap.
-          curl -H "Authorization: token ${{ secrets.TEMP_DQLITE_UTILS_TOKEN }}" \
-            -H "Accept: application/octet-stream" \
-            -L https://api.github.com/repos/canonical/dqlite-utils/releases/assets/343675902 \
-            -o release.tar.xz
-          sudo tar -xf release.tar.xz -C /usr/local/bin dqlite-utils
-          rm release.tar.xz
 
     - name: Build dqlite
       env:
@@ -49,6 +41,14 @@ jobs:
     - name: Generate test snapshots
       if: ${{ matrix.os == 'ubuntu-24.04' }}
       run: |
+          # Get dqlite-utils tool by downloading prebuilt binary. Eventually we will
+          # replace this with a proper package installation or with a snap.
+          curl -H "Authorization: token ${{ secrets.TEMP_DQLITE_UTILS_TOKEN }}" \
+            -H "Accept: application/octet-stream" \
+            -L https://api.github.com/repos/canonical/dqlite-utils/releases/assets/343675902 \
+            -o release.tar.xz
+          sudo tar -xf release.tar.xz -C /usr/local/bin dqlite-utils
+          rm release.tar.xz
           (mkdir test-snapshots &&
             cd test-snapshots && \
             # Simple cases
