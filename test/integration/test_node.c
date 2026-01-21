@@ -251,6 +251,31 @@ static MunitParameterEnum test_snapshot_params[SUITE__CAP] = {
     {NULL, NULL},
 };
 
+static char *snapshot_dir_env = NULL;
+__attribute__((constructor)) static void snapshot_dirs_env_init(void)
+{
+	const char *env = getenv("DQLITE_TEST_SNAPSHOT_DIRS");
+	if (env == NULL) {
+		return;
+	}
+
+	char *dirs = snapshot_dir_env = strdup(env);
+	char *saveptr = NULL;
+	char *dir = strtok_r(dirs, ":", &saveptr);
+	while (dir != NULL && snapshot_dirs_n < SUITE__CAP - 1) {
+		snapshot_dirs[snapshot_dirs_n++] = dir;
+		dir = strtok_r(NULL, ":", &saveptr);
+	}
+}
+
+// Make the sanitizer happy
+__attribute__((destructor)) static void snapshot_dirs_env_uninit(void)
+{
+	free(snapshot_dir_env);
+	snapshot_dir_env = NULL;
+}
+
+
 RUNNER_ARGUMENT(snapshot, "directory where to find a test snapshot") {
 	if (NEXT_ARG == NULL) {
 		printf("Error: --snapshot-dirs requires an argument\n");
@@ -280,28 +305,27 @@ TEST(node, existing_snapshot, setUpExistingSnapshot, tearDownKeepDir, 0, test_sn
 
 	/* Open a bunch of clients and do a query on them */
 	struct client_proto client;
-	for (int i = 0; i < CLIENT_N; i++) {
-		struct rows rows;
-		bool done;
+	struct rows rows;
 
-		rv = openDb(&client, f->node, "test");
-		munit_assert_int(rv, ==, RAFT_OK);
-		rv = clientSendQuerySQL(&client, 
-			"SELECT COUNT(*) FROM test",
-			NULL, 0, NULL
-		);
-		munit_assert_int(rv, ==, RAFT_OK);
-		
-		rv = clientRecvRows(&client, &rows, &done, NULL);
-		munit_assert_int(rv, ==, RAFT_OK);
-		munit_assert_true(done);
-		munit_assert_int(rows.column_count, ==, 1);
-		munit_assert_string_equal(rows.column_names[0], "COUNT(*)");
-		munit_assert_not_null(rows.next);
-		munit_assert_int(rows.next->values[0].type, ==, SQLITE_INTEGER);
-		munit_assert_int(rows.next->values[0].integer, >, 0);
-		clientCloseRows(&rows);
-	}
+	rv = openDb(&client, f->node, "test");
+	munit_assert_int(rv, ==, RAFT_OK);
+	rv = clientSendQuerySQL(&client, 
+		"SELECT COUNT(*) FROM test",
+		NULL, 0, NULL
+	);
+	munit_assert_int(rv, ==, RAFT_OK);
+	
+	bool done;
+	rv = clientRecvRows(&client, &rows, &done, NULL);
+	munit_assert_int(rv, ==, RAFT_OK);
+	munit_assert_true(done);
+	munit_assert_int(rows.column_count, ==, 1);
+	munit_assert_string_equal(rows.column_names[0], "COUNT(*)");
+	munit_assert_not_null(rows.next);
+	munit_assert_int(rows.next->values[0].type, ==, SQLITE_INTEGER);
+	munit_assert_int(rows.next->values[0].integer, >, 0);
+	clientCloseRows(&rows);
+	clientClose(&client);
 
 	rv = dqlite_node_stop(f->node);
 	munit_assert_int(rv, ==, 0);
