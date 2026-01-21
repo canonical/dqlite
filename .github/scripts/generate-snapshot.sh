@@ -68,6 +68,7 @@ if [ "$MAIN_ONLY" -eq 0 ]; then
 fi
 
 # First generate a sqlite3 database
+echo -n "Generating database with $ROW_COUNT rows..."
 cat <<EOF | sqlite3 temp > /dev/null 2>&1
 PRAGMA journal_mode=WAL;
 PRAGMA wal_autocheckpoint=$WAL_AUTOCHECKPOINT;
@@ -88,12 +89,15 @@ SELECT id, hex(randomblob(16))
 FROM sequence;
 
 EOF
+echo "Done"
 
 
 # Now generate a dqlite snapshot from the sqlite3 database
+echo -n "Generating snapshot in '$OUTPUT_DIR'..."
 cat <<EOF | dqlite-utils > /dev/null 2>&1
 .snapshot
 .add-server "1"
 ATTACH DATABASE "temp" AS test;
 .finish "$OUTPUT_DIR"
 EOF
+echo "Done"
