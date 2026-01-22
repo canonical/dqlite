@@ -17,7 +17,7 @@ USAGE
 	exit 0
 }
 
-# Parse arguments
+# Parse arguments.
 while [ $# -gt 0 ]; do
 	case "$1" in
         --main-only)
@@ -59,7 +59,7 @@ if [ -z "$OUTPUT_DIR" ]; then
 	usage
 fi
 
-# Cleanup
+# Cleanup.
 trap 'rm -f temp temp-wal temp-shm' EXIT
 
 SQLITE3_CHECKPOINT_ON_CLOSE=""
@@ -67,7 +67,7 @@ if [ "$MAIN_ONLY" -eq 0 ]; then
     SQLITE3_CHECKPOINT_ON_CLOSE=".dbconfig no_ckpt_on_close on"
 fi
 
-# First generate a sqlite3 database
+# First generate a sqlite3 database.
 echo -n "Generating database with $ROW_COUNT rows..."
 cat <<EOF | sqlite3 temp > /dev/null 2>&1
 PRAGMA journal_mode=WAL;
@@ -75,7 +75,7 @@ PRAGMA wal_autocheckpoint=$WAL_AUTOCHECKPOINT;
 $SQLITE3_CHECKPOINT_ON_CLOSE
 
 CREATE TABLE test(id INTEGER PRIMARY KEY, value TEXT NOT NULL);
-WITH sequence AS (
+WITH RECURSIVE sequence AS (
    SELECT 1 AS id
 
    UNION ALL
@@ -87,12 +87,10 @@ WITH sequence AS (
 INSERT OR REPLACE INTO test
 SELECT id, hex(randomblob(16))
 FROM sequence;
-
 EOF
 echo "Done"
 
-
-# Now generate a dqlite snapshot from the sqlite3 database
+# Now generate a dqlite snapshot from the sqlite3 database.
 echo -n "Generating snapshot in '$OUTPUT_DIR'..."
 cat <<EOF | dqlite-utils > /dev/null 2>&1
 .snapshot

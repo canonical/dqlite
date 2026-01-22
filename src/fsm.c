@@ -202,12 +202,12 @@ static int decodeDatabase(const struct registry *r,
 	const size_t page_size = r->config->vfs.page_size;
 	dqlite_assert((header.main_size % page_size) == 0);
 
-	size_t page_count = (size_t)header.main_size / page_size;
-	void **pages = raft_malloc(sizeof(void *) * page_count);
+	size_t main_page_count = (size_t)header.main_size / page_size;
+	void **pages = raft_malloc(sizeof(void *) * main_page_count);
 	if (pages == NULL) {
 		return RAFT_NOMEM;
 	}
-	for (size_t i = 0; i < page_count; i++) {
+	for (size_t i = 0; i < main_page_count; i++) {
 		pages[i] = (void *)(cursor->p + i * page_size);
 	}
 	cursor->p += header.main_size;
@@ -225,15 +225,18 @@ static int decodeDatabase(const struct registry *r,
 		const unsigned n_frames =
 		    (unsigned)((header.wal_size - (size_t)wal_header_size) /
 			       wal_frame_size);
-		const char *wal = cursor->p;
-		const void *last_frame =
-		    (const uint8_t *)wal + wal_header_size +
+		const uint8_t *wal = (uint8_t*)cursor->p;
+		// In dqlite, WAL is always well-formed (id doesn't contain
+		// partial transactions). As such, the last frame is always a
+		// commit frame and must contain the size of the database after
+		// the transaction.
+		const uint8_t *last_frame =
+		    wal + wal_header_size +
 		    n_frames * wal_frame_size - wal_frame_size;
-
 		const size_t wal_page_count = ByteGetBe32(last_frame + 4);
 		dqlite_assert(wal_page_count != 0);
 
-		if (wal_page_count > page_count) {
+		if (wal_page_count > main_page_count) {
 			void *wal_pages = raft_realloc(
 			    pages, sizeof(void *) * wal_page_count);
 			if (wal_pages == NULL) {
@@ -244,10 +247,10 @@ static int decodeDatabase(const struct registry *r,
 		}
 
 		/* Read pages in the WAL order */
-		for (const char *frame = wal + wal_header_size;
+		for (const uint8_t *frame = wal + wal_header_size;
 		     frame < wal + header.wal_size; frame += wal_frame_size) {
 			uint32_t page_number =
-			    ByteGetBe32((const uint8_t *)frame);
+			    ByteGetBe32(frame);
 			if (page_number > wal_page_count) {
 				continue;
 			}
@@ -258,7 +261,7 @@ static int decodeDatabase(const struct registry *r,
 
 		/* Verify that if the WAL resized the database, then no page is
 		 * missing. */
-		for (size_t page_number = page_count;
+		for (size_t page_number = main_page_count;
 		     page_number <= wal_page_count; page_number++) {
 			if (pages[page_number - 1] == NULL) {
 				tracef("missing page %" PRIu64 " in wal",
@@ -267,12 +270,12 @@ static int decodeDatabase(const struct registry *r,
 				return RAFT_INVALID;
 			}
 		}
-		page_count = wal_page_count;
+		main_page_count = wal_page_count;
 	}
 	cursor->p += header.wal_size;
 
 	*snapshot = (struct vfsSnapshot){
-		.page_count = page_count,
+		.page_count = main_page_count,
 		.page_size = page_size,
 		.pages = pages,
 	};

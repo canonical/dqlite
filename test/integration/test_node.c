@@ -268,22 +268,11 @@ __attribute__((constructor)) static void snapshot_dirs_env_init(void)
 	}
 }
 
-// Make the sanitizer happy
+// Make the sanitizer happy.
 __attribute__((destructor)) static void snapshot_dirs_env_uninit(void)
 {
 	free(snapshot_dir_env);
 	snapshot_dir_env = NULL;
-}
-
-
-RUNNER_ARGUMENT(snapshot, "directory where to find a test snapshot") {
-	if (NEXT_ARG == NULL) {
-		printf("Error: --snapshot-dirs requires an argument\n");
-		return false;
-	}
-	SHIFT;
-	snapshot_dirs[snapshot_dirs_n++] = CURRENT_ARG;
-	return true;
 }
 
 static void *setUpExistingSnapshot(const MunitParameter params[], void *user_data)
@@ -303,7 +292,7 @@ TEST(node, existing_snapshot, setUpExistingSnapshot, tearDownKeepDir, 0, test_sn
 	rv = dqlite_node_start(f->node);
 	munit_assert_int(rv, ==, 0);
 
-	/* Open a bunch of clients and do a query on them */
+	/* Open a client and do a query on them */
 	struct client_proto client;
 	struct rows rows;
 
