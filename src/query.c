@@ -8,6 +8,11 @@
 static int value_type(sqlite3_stmt *stmt, int i)
 {
 	int type = sqlite3_column_type(stmt, i);
+
+	if (type == SQLITE_NULL) {
+		return SQLITE_NULL;
+	}
+
 	const char *column_type_name = sqlite3_column_decltype(stmt, i);
 	if (column_type_name != NULL) {
 		if ((strcasecmp(column_type_name, "DATETIME") == 0) ||
@@ -16,12 +21,11 @@ static int value_type(sqlite3_stmt *stmt, int i)
 			if (type == SQLITE_INTEGER) {
 				type = DQLITE_UNIXTIME;
 			} else {
-				dqlite_assert(type == SQLITE_TEXT ||
-				       type == SQLITE_NULL);
+				dqlite_assert(type == SQLITE_TEXT);
 				type = DQLITE_ISO8601;
 			}
 		} else if (strcasecmp(column_type_name, "BOOLEAN") == 0) {
-			dqlite_assert(type == SQLITE_INTEGER || type == SQLITE_NULL);
+			dqlite_assert(type == SQLITE_INTEGER);
 			type = DQLITE_BOOLEAN;
 		}
 	}
