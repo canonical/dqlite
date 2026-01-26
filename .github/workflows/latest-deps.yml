@@ -58,7 +58,7 @@ jobs:
     - name: Build dqlite
       run: |
           autoreconf -i
-          ./configure --enable-debug --enable-sanitize --enable-build-raft --enable-build-sqlite
+          ./configure CFLAGS="-march=x86-64-v3" --enable-debug --enable-sanitize --enable-build-raft --enable-build-sqlite
           make -j4 unit-test integration-test \
                    raft-core-fuzzy-test \
                    raft-core-integration-test \
@@ -69,5 +69,4 @@ jobs:
 
     - name: Test
       run: |
-           export LIBDQLITE_TRACE=1
            make check || (cat ./test-suite.log && false)
