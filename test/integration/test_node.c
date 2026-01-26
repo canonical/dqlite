@@ -33,40 +33,36 @@ struct fixture
 	dqlite_node *node; /* Node instance. */
 };
 
-static void *setUp(const MunitParameter params[], void *user_data)
+static void *setUp(const MunitParameter params[], void *user_data, const char *dir, const char *address)
 {
+	if (dir == NULL) {
+		return NULL;
+	}
+
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 
-	f->dir = test_dir_setup();
+	f->dir = (char *)dir;
 
 	rv = dqlite_node_create(1, "1", f->dir, &f->node);
 	munit_assert_int(rv, ==, 0);
 
-	rv = dqlite_node_set_bind_address(f->node, "@123");
+	rv = dqlite_node_set_bind_address(f->node, address);
 	munit_assert_int(rv, ==, 0);
 
 	return f;
 }
 
+static void *setUpLocal(const MunitParameter params[], void *user_data)
+{
+	return setUp(params, user_data, test_dir_setup(), "@123");
+}
+
 static void *setUpInet(const MunitParameter params[], void *user_data)
 {
-	struct fixture *f = munit_malloc(sizeof *f);
-	int rv;
-	test_heap_setup(params, user_data);
-	test_sqlite_setup(params);
-
-	f->dir = test_dir_setup();
-
-	rv = dqlite_node_create(1, "1", f->dir, &f->node);
-	munit_assert_int(rv, ==, 0);
-
-	rv = dqlite_node_set_bind_address(f->node, "127.0.0.1:9001");
-	munit_assert_int(rv, ==, 0);
-
-	return f;
+	return setUp(params, user_data, test_dir_setup(), "127.0.0.1:9001");
 }
 
 /* Tests if node starts/stops successfully and also performs some memory cleanup
@@ -81,7 +77,7 @@ static void startStopNode(struct fixture *f)
 static void *setUpForRecovery(const MunitParameter params[], void *user_data)
 {
 	int rv;
-	struct fixture *f = setUp(params, user_data);
+	struct fixture *f = setUpLocal(params, user_data);
 	startStopNode(f);
 	dqlite_node_destroy(f->node);
 
@@ -94,17 +90,28 @@ static void *setUpForRecovery(const MunitParameter params[], void *user_data)
 	return f;
 }
 
-static void tearDown(void *data)
+static void tearDownKeepDir(void *data)
 {
 	struct fixture *f = data;
+	if (f == NULL) {
+		return;
+	}
 
 	dqlite_node_destroy(f->node);
 
-	test_dir_tear_down(f->dir);
 	test_sqlite_tear_down();
 	test_heap_tear_down(data);
 	free(f);
 }
+
+static void tearDown(void *data)
+{
+	struct fixture *f = data;
+	char *dir = f->dir;
+	tearDownKeepDir(data);
+	test_dir_tear_down(dir);
+}
+
 
 SUITE(node);
 
@@ -113,8 +120,7 @@ SUITE(node);
  * dqlite_node_start
  *
  ******************************************************************************/
-
-TEST(node, start, setUp, tearDown, 0, node_params)
+TEST(node, start, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -188,7 +194,6 @@ static int openDb(struct client_proto *c, struct dqlite_node *n, const char *db)
 	return RAFT_OK;
 }
 
-
 TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
@@ -232,6 +237,85 @@ TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
 	for (int i = 0; i < CLIENT_N; i++) {
 		clientClose(&clients[i]);
 	}
+	return MUNIT_OK;
+}
+
+#define SNAPSHOT_DIR_PARAM "snapshot_dir"
+
+static char *snapshot_compression[] = {"1", NULL};
+static char* snapshot_dirs[SUITE__CAP] = {};
+static int snapshot_dirs_n = 0;
+static MunitParameterEnum test_snapshot_params[SUITE__CAP] = {
+    {SNAPSHOT_DIR_PARAM, snapshot_dirs},
+    {SNAPSHOT_COMPRESSION_PARAM, snapshot_compression},
+    {NULL, NULL},
+};
+
+static char *snapshot_dir_env = NULL;
+__attribute__((constructor)) static void snapshot_dirs_env_init(void)
+{
+	const char *env = getenv("DQLITE_TEST_SNAPSHOT_DIRS");
+	if (env == NULL) {
+		return;
+	}
+
+	char *dirs = snapshot_dir_env = strdup(env);
+	char *saveptr = NULL;
+	char *dir = strtok_r(dirs, ":", &saveptr);
+	while (dir != NULL && snapshot_dirs_n < SUITE__CAP - 1) {
+		snapshot_dirs[snapshot_dirs_n++] = dir;
+		dir = strtok_r(NULL, ":", &saveptr);
+	}
+}
+
+// Make the sanitizer happy.
+__attribute__((destructor)) static void snapshot_dirs_env_uninit(void)
+{
+	free(snapshot_dir_env);
+	snapshot_dir_env = NULL;
+}
+
+static void *setUpExistingSnapshot(const MunitParameter params[], void *user_data)
+{
+	return setUp(params, user_data, munit_parameters_get(params, SNAPSHOT_DIR_PARAM), "127.0.0.1:9001");
+}
+
+TEST(node, existing_snapshot, setUpExistingSnapshot, tearDownKeepDir, 0, test_snapshot_params)
+{
+	struct fixture *f = data;
+	int rv;
+
+	if (f == NULL) {
+		return MUNIT_SKIP;
+	}
+
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	/* Open a client and do a query on them */
+	struct client_proto client;
+	struct rows rows;
+
+	rv = openDb(&client, f->node, "test");
+	munit_assert_int(rv, ==, RAFT_OK);
+	rv = clientSendQuerySQL(&client, "SELECT COUNT(*) FROM test", NULL, 0,
+				NULL);
+	munit_assert_int(rv, ==, RAFT_OK);
+	bool done;
+	rv = clientRecvRows(&client, &rows, &done, NULL);
+	munit_assert_int(rv, ==, RAFT_OK);
+	munit_assert_true(done);
+	munit_assert_int(rows.column_count, ==, 1);
+	munit_assert_string_equal(rows.column_names[0], "COUNT(*)");
+	munit_assert_not_null(rows.next);
+	munit_assert_int(rows.next->values[0].type, ==, SQLITE_INTEGER);
+	munit_assert_int(rows.next->values[0].integer, >, 0);
+	clientCloseRows(&rows);
+	clientClose(&client);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
 	return MUNIT_OK;
 }
 
@@ -329,7 +413,7 @@ TEST(node, stopInflightWrites, setUpInflight, tearDownInflight, 0, node_params)
 }
 
 
-TEST(node, snapshotParams, setUp, tearDown, 0, node_params)
+TEST(node, snapshotParams, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -341,7 +425,7 @@ TEST(node, snapshotParams, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, snapshotParamsRunning, setUp, tearDown, 0, node_params)
+TEST(node, snapshotParamsRunning, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -358,7 +442,7 @@ TEST(node, snapshotParamsRunning, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, snapshotParamsTrailingTooSmall, setUp, tearDown, 0, node_params)
+TEST(node, snapshotParamsTrailingTooSmall, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -372,7 +456,7 @@ TEST(node, snapshotParamsTrailingTooSmall, setUp, tearDown, 0, node_params)
 
 TEST(node,
      snapshotParamsThresholdLargerThanTrailing,
-     setUp,
+     setUpLocal,
      tearDown,
      0,
      node_params)
@@ -387,7 +471,7 @@ TEST(node,
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatency, setUp, tearDown, 0, node_params)
+TEST(node, networkLatency, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -399,7 +483,7 @@ TEST(node, networkLatency, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatencyRunning, setUp, tearDown, 0, node_params)
+TEST(node, networkLatencyRunning, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -416,7 +500,7 @@ TEST(node, networkLatencyRunning, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatencyTooLarge, setUp, tearDown, 0, node_params)
+TEST(node, networkLatencyTooLarge, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -428,7 +512,7 @@ TEST(node, networkLatencyTooLarge, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatencyMs, setUp, tearDown, 0, node_params)
+TEST(node, networkLatencyMs, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -442,7 +526,7 @@ TEST(node, networkLatencyMs, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatencyMsRunning, setUp, tearDown, 0, node_params)
+TEST(node, networkLatencyMsRunning, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -459,7 +543,7 @@ TEST(node, networkLatencyMsRunning, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatencyMsTooSmall, setUp, tearDown, 0, node_params)
+TEST(node, networkLatencyMsTooSmall, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -471,7 +555,7 @@ TEST(node, networkLatencyMsTooSmall, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, networkLatencyMsTooLarge, setUp, tearDown, 0, node_params)
+TEST(node, networkLatencyMsTooLarge, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;
@@ -483,7 +567,7 @@ TEST(node, networkLatencyMsTooLarge, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, blockSize, setUp, tearDown, 0, NULL)
+TEST(node, blockSize, setUpLocal, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	int rv;
@@ -503,7 +587,7 @@ TEST(node, blockSize, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(node, blockSizeRunning, setUp, tearDown, 0, NULL)
+TEST(node, blockSizeRunning, setUpLocal, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	int rv;
@@ -522,7 +606,7 @@ TEST(node, blockSizeRunning, setUp, tearDown, 0, NULL)
 
 /* Our file locking prevents starting a second dqlite instance that
  * uses the same directory as a running instance. */
-TEST(node, locked, setUp, tearDown, 0, NULL)
+TEST(node, locked, setUpLocal, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	int rv;
@@ -714,7 +798,7 @@ TEST(node, errMsgNodeNull, NULL, NULL, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(node, errMsg, setUp, tearDown, 0, node_params)
+TEST(node, errMsg, setUpLocal, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
 	int rv;

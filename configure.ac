@@ -1,5 +1,5 @@
 AC_PREREQ(2.60)
-AC_INIT([libdqlite], [1.18.4], [https://github.com/canonical/dqlite])
+AC_INIT([libdqlite], [1.18.5], [https://github.com/canonical/dqlite])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([ac])
 
@@ -65,6 +65,12 @@ AC_ARG_WITH(static-deps,
 	    AS_HELP_STRING([--with-static-deps[=ARG]],
 			   [skip building a shared library and link test binaries statically]))
 AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" = "xyes")
+
+# Add flags for dead code elimination
+AX_CHECK_COMPILE_FLAG([-fdata-sections],
+  [AM_CFLAGS="$AM_CFLAGS -fdata-sections"])
+AX_CHECK_COMPILE_FLAG([-ffunction-sections],
+  [AM_CFLAGS="$AM_CFLAGS -ffunction-sections"])
 
 # Whether to enable code coverage.
 AX_CODE_COVERAGE

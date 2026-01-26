@@ -20,14 +20,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - name: Set up dependencies
       run: |
           sudo apt update
           sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev xfslibs-dev \
                               linux-libc-dev btrfs-progs xfsprogs zfsutils-linux \
-                              lcov
+                              lcov sqlite3
 
     - name: Build dqlite
       env:
@@ -38,6 +38,33 @@ jobs:
                       --enable-build-raft
           make -j$(nproc) check-norun
 
+    - name: Generate test snapshots
+      if: ${{ matrix.os == 'ubuntu-24.04' }}
+      run: |
+          # Get dqlite-utils tool by downloading prebuilt binary. Eventually we will
+          # replace this with a proper package installation or with a snap.
+          curl -H "Authorization: token ${{ secrets.TEMP_DQLITE_UTILS_TOKEN }}" \
+            -H "Accept: application/octet-stream" \
+            -L https://api.github.com/repos/canonical/dqlite-utils/releases/assets/343675902 \
+            -o release.tar.xz
+          sudo tar -xf release.tar.xz -C /usr/local/bin dqlite-utils
+          rm release.tar.xz
+          (mkdir test-snapshots &&
+            cd test-snapshots && \
+            # Simple cases
+            ../.github/scripts/generate-snapshot.sh --main-only --row-count 1000 small-no-wal && \
+            ../.github/scripts/generate-snapshot.sh --main-only --row-count 100000 medium-no-wal && \
+            ../.github/scripts/generate-snapshot.sh --main-only --row-count 5000000 large-no-wal && \
+            # With WAL
+            ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 1000 small-with-wal && \
+            ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 100000 medium-with-wal && \
+            ../.github/scripts/generate-snapshot.sh --wal-limit 1000 --row-count 5000000 large-with-wal && \
+            # With huge WAL
+            ../.github/scripts/generate-snapshot.sh --row-count 1000 small-huge-wal && \
+            ../.github/scripts/generate-snapshot.sh --row-count 100000 medium-huge-wal && \
+            ../.github/scripts/generate-snapshot.sh --row-count 5000000 large-huge-wal \
+          )
+
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
@@ -46,7 +73,10 @@ jobs:
       run: |
           ./test/raft/lib/fs.sh setup
           export $(./test/raft/lib/fs.sh detect)
-          sudo UV_THREADPOOL_SIZE=$(($(nproc) * 2)) make check || (cat test-suite.log && false)
+          sudo \
+              DQLITE_TEST_SNAPSHOT_DIRS=$(shopt -s nullglob; echo test-snapshots/*/ | tr ' ' :) \
+              UV_THREADPOOL_SIZE=$(($(nproc) * 2)) \
+            make check || (cat test-suite.log && false)
           ./test/raft/lib/fs.sh teardown
 
     - name: Coverage
@@ -74,7 +104,7 @@ jobs:
           - s390x
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Set up cross-compilation for ${{ matrix.arch }}
       if: ${{ matrix.arch != 'i386' }}
       env:
