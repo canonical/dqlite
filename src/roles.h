@@ -11,6 +11,7 @@ struct all_node_info
 	bool online;
 	uint64_t failure_domain;
 	uint64_t weight;
+	uint64_t allowed_roles;
 };
 
 /* Determine what roles changes should be made to the cluster, without

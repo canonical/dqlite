@@ -16,6 +16,7 @@ struct config {
 	struct logger logger;              /* Custom logger */
 	unsigned long long failure_domain; /* User-provided failure domain */
 	unsigned long long int weight;     /* User-provided node weight */
+	unsigned long long allowed_roles;  /* Optional user-provided role eligibility mask */
 	char raft_dir[1024];               /* Directory used by raft */
 	int voters;                        /* Target number of voters */
 	int standbys;                      /* Target number of standbys */

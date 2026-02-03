@@ -34,9 +34,14 @@
 #define RESPONSE_EMPTY(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 #define RESPONSE_FILES(X, ...) X(uint64, n, ##__VA_ARGS__)
 #define RESPONSE_SERVERS(X, ...) X(uint64, n, ##__VA_ARGS__)
-#define RESPONSE_METADATA(X, ...)                \
+#define RESPONSE_METADATA_V0(X, ...)             \
 	X(uint64, failure_domain, ##__VA_ARGS__) \
 	X(uint64, weight, ##__VA_ARGS__)
+#define RESPONSE_METADATA_V1(X, ...)             \
+	X(uint64, failure_domain, ##__VA_ARGS__) \
+	X(uint64, weight, ##__VA_ARGS__)         \
+	X(uint64, allowed_roles, ##__VA_ARGS__)
+#define RESPONSE_METADATA RESPONSE_METADATA_V1
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
@@ -57,5 +62,6 @@
 	X(metadata, METADATA, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);
+SERIALIZE__DEFINE(response_metadata_v0, RESPONSE_METADATA_V0);
 
 #endif /* RESPONSE_H_ */

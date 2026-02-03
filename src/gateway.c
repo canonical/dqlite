@@ -1327,14 +1327,28 @@ static int handle_describe(struct gateway *g, struct handle *req)
 {
 	tracef("handle describe");
 	struct cursor *cursor = &req->cursor;
-	START_V0(describe, metadata);
-	if (request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V0) {
+	START_V0(describe);
+	if (request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V0 &&
+	    request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V1) {
 		tracef("bad format");
 		failure(req, SQLITE_PROTOCOL, "bad format version");
+		return 0;
 	}
+	if (request.format == DQLITE_REQUEST_DESCRIBE_FORMAT_V0) {
+		struct response_metadata_v0 response = {0};
+
+		response.failure_domain = g->config->failure_domain;
+		response.weight = g->config->weight;
+		SUCCESS(metadata_v0, METADATA, response, 0);
+		return 0;
+	}
+
+	struct response_metadata response = {0};
+
 	response.failure_domain = g->config->failure_domain;
 	response.weight = g->config->weight;
-	SUCCESS_V0(metadata, METADATA);
+	response.allowed_roles = g->config->allowed_roles;
+	SUCCESS(metadata, METADATA, response, 0);
 	return 0;
 }
 

@@ -367,6 +367,13 @@ int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code)
 	return 0;
 }
 
+int dqlite_node_set_allowed_roles(dqlite_node *n,
+				  unsigned long long allowed_roles)
+{
+	n->config.allowed_roles = allowed_roles;
+	return 0;
+}
+
 int dqlite_node_set_snapshot_params_v2(dqlite_node *n,
 					unsigned snapshot_threshold,
 					unsigned snapshot_trailing,

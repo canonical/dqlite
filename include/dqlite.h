@@ -380,6 +380,16 @@ DQLITE_API int dqlite_node_set_network_latency_ms(dqlite_node *t,
 DQLITE_API int dqlite_node_set_failure_domain(dqlite_node *n,
 					      unsigned long long code);
 
+/**
+ * Set the allowed roles mask associated with this node.
+ *
+ * This is effectively a tag applied to the node and that can be inspected later
+ * with the "Describe node" client request. A value of 0 means no restriction
+ * (all roles are allowed).
+ */
+DQLITE_API int dqlite_node_set_allowed_roles(dqlite_node *n,
+					     unsigned long long allowed_roles);
+
 enum {
 	DQLITE_SNAPSHOT_TRAILING_STATIC = 0,
 	DQLITE_SNAPSHOT_TRAILING_DYNAMIC = 1,

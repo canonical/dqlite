@@ -932,7 +932,7 @@ int clientSendDescribe(struct client_proto *c, struct client_context *context)
 {
 	tracef("client send describe");
 	struct request_describe request;
-	request.format = DQLITE_REQUEST_DESCRIBE_FORMAT_V0;
+	request.format = DQLITE_REQUEST_DESCRIBE_FORMAT_V1;
 	REQUEST(describe, DESCRIBE, 0);
 	return 0;
 }
@@ -1109,6 +1109,7 @@ err_after_alloc_fs:
 int clientRecvMetadata(struct client_proto *c,
 		       uint64_t *failure_domain,
 		       uint64_t *weight,
+		       uint64_t *allowed_roles,
 		       struct client_context *context)
 {
 	tracef("client recv metadata");
@@ -1117,5 +1118,6 @@ int clientRecvMetadata(struct client_proto *c,
 	RESPONSE(metadata, METADATA);
 	*failure_domain = response.failure_domain;
 	*weight = response.weight;
+	*allowed_roles = response.allowed_roles;
 	return 0;
 }
