@@ -277,6 +277,7 @@ DQLITE_VISIBLE_TO_TESTS int clientRecvFiles(struct client_proto *c,
 DQLITE_VISIBLE_TO_TESTS int clientRecvMetadata(struct client_proto *c,
 					       uint64_t *failure_domain,
 					       uint64_t *weight,
+					       uint64_t *allowed_roles,
 					       struct client_context *context);
 
 #endif /* DQLITE_CLIENT_PROTOCOL_H_ */

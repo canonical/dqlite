@@ -53,7 +53,8 @@ enum {
 #define DQLITE_REQUEST_CLUSTER_FORMAT_V0 0 /* ID and address */
 #define DQLITE_REQUEST_CLUSTER_FORMAT_V1 1 /* ID, address and role */
 
-#define DQLITE_REQUEST_DESCRIBE_FORMAT_V0 0 /* Failure domain and weight */
+#define DQLITE_REQUEST_DESCRIBE_FORMAT_V0 0 /* Failure domain, weight */
+#define DQLITE_REQUEST_DESCRIBE_FORMAT_V1 1 /* Failure domain, weight, allowed roles */
 
 /* These apply to REQUEST_EXEC, REQUEST_EXEC_SQL, REQUEST_QUERY, and
  * REQUEST_QUERY_SQL. */

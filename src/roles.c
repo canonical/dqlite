@@ -389,7 +389,9 @@ static void pollClusterWorkCb(uv_work_t *work)
 	rv = clientSendDescribe(&proto, &context);
 	rv = clientRecvMetadata(&proto,
 				&polling->cluster[polling->i].failure_domain,
-				&polling->cluster[polling->i].weight, &context);
+				&polling->cluster[polling->i].weight,
+				&polling->cluster[polling->i].allowed_roles,
+				&context);
 	if (rv != 0) {
 		goto close;
 	}
