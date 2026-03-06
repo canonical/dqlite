@@ -872,6 +872,10 @@ int dqlite_node_handover(dqlite_node *d)
 {
 	int rv;
 
+	if (!d->running) {
+		return DQLITE_MISUSE;
+	}
+
 	rv = uv_async_send(&d->handover);
 	dqlite_assert(rv == 0);
 
@@ -885,6 +889,10 @@ int dqlite_node_stop(dqlite_node *d)
 	tracef("dqlite node stop");
 	void *result;
 	int rv;
+
+	if (!d->running) {
+		return DQLITE_MISUSE;
+	}
 
 	/* Prevents using @d multiple times from different contexts */
 	if (d->lock_fd == -EBADF) {
