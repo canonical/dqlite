@@ -1281,6 +1281,15 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	return 0;
 }
 
+#define LIBDQLITE_DISABLE_FALLOCATE "LIBDQLITE_DISABLE_FALLOCATE"
+
+static bool fallocateDisabledByEnv(void)
+{
+        const char *value = getenv(LIBDQLITE_DISABLE_FALLOCATE);
+
+        return value != NULL && strcmp(value, "0") != 0;
+}
+
 #define UV__FS_PROBE_FALLOCATE_FILE ".probe_fallocate"
 /* Leave detection of other error conditions to other probe* functions, only
  * bother checking if posix_fallocate returns success. */
@@ -1292,6 +1301,9 @@ static void probeFallocate(const char *dir, bool *fallocate)
 	int fd = -1;
 
 	*fallocate = false;
+	if (fallocateDisabledByEnv()) {
+		return;
+	}
 	UvFsRemoveFile(dir, UV__FS_PROBE_FALLOCATE_FILE, ignored);
 	rv = uvFsOpenFile(dir, UV__FS_PROBE_FALLOCATE_FILE, flags,
 			  S_IRUSR | S_IWUSR, &fd, ignored);

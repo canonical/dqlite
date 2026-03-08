@@ -145,3 +145,7 @@ Detailed tracing will be enabled when the environment variable
 range and represents a tracing level, where `0` means "no traces" emitted, `5`
 enables minimum (FATAL records only), and `1` enables maximum verbosity (all:
 DEBUG, INFO, WARN, ERROR, FATAL records).
+
+Set `LIBDQLITE_DISABLE_FALLOCATE` before startup to disable the use of
+`posix_fallocate()` during filesystem capability probing and file allocation.
+Any value other than `0` disables fallocate.

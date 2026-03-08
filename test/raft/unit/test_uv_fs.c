@@ -1,5 +1,6 @@
 #include <sys/utsname.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include "../../../src/raft/uv_fs.h"
 #include "../../../src/raft/uv_os.h"
@@ -405,6 +406,30 @@ TEST(UvFsProbeCapabilities, noResources, DirBtrfsSetUp, DirTearDown, 0, NULL)
         dir, RAFT_IOERR,
         "probe Async I/O: io_setup: resource temporarily unavailable");
     AioDestroy(ctx);
+    return MUNIT_OK;
+}
+
+TEST(UvFsProbeCapabilities, fallocateDisabledByEnv, DirSetUp, DirTearDown, 0,
+     NULL)
+{
+    const char *dir = data;
+    size_t direct_io;
+    bool async_io;
+    bool fallocate;
+    char errmsg[RAFT_ERRMSG_BUF_SIZE];
+    int rv;
+
+    if (dir == NULL) {
+        return MUNIT_SKIP;
+    }
+
+    munit_assert_int(setenv("LIBDQLITE_DISABLE_FALLOCATE", "1", 1), ==, 0);
+    rv = UvFsProbeCapabilities(dir, &direct_io, &async_io, &fallocate, errmsg);
+    unsetenv("LIBDQLITE_DISABLE_FALLOCATE");
+
+    munit_assert_int(rv, ==, 0);
+    munit_assert_false(fallocate);
+
     return MUNIT_OK;
 }
 
