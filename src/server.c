@@ -1111,7 +1111,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 	struct client_node_info info;
 
 	version_str = p;
-	nl = memchr(p, '\n', (size_t)(end - version_str));
+	nl = (char*)memchr(p, '\n', (size_t)(end - version_str));
 	if (nl == NULL) {
 		return 1;
 	}
@@ -1123,7 +1123,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 
 	while (p != end) {
 		addr = p;
-		nl = memchr(p, '\n', (size_t)(end - addr));
+		nl = (char*)memchr(p, '\n', (size_t)(end - addr));
 		if (nl == NULL) {
 			return 1;
 		}
@@ -1131,7 +1131,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 		p = nl + 1;
 
 		id_str = p;
-		nl = memchr(p, '\n', (size_t)(end - id_str));
+		nl = (char*)memchr(p, '\n', (size_t)(end - id_str));
 		if (nl == NULL) {
 			return 1;
 		}
@@ -1150,7 +1150,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 		}
 
 		role_str = p;
-		nl = memchr(p, '\n', (size_t)(end - role_str));
+		nl = (char*)memchr(p, '\n', (size_t)(end - role_str));
 		if (nl == NULL) {
 			return 1;
 		}
@@ -1247,7 +1247,7 @@ static int parseLocalInfo(char *buf,
 	unsigned long long id;
 
 	version_str = p;
-	nl = memchr(version_str, '\n', (size_t)(end - version_str));
+	nl = (char*)memchr(version_str, '\n', (size_t)(end - version_str));
 	if (nl == NULL) {
 		return 1;
 	}
@@ -1258,7 +1258,7 @@ static int parseLocalInfo(char *buf,
 	}
 
 	addr = p;
-	nl = memchr(addr, '\n', (size_t)(end - addr));
+	nl = (char*)memchr(addr, '\n', (size_t)(end - addr));
 	if (nl == NULL) {
 		return 1;
 	}
@@ -1266,7 +1266,7 @@ static int parseLocalInfo(char *buf,
 	p = nl + 1;
 
 	id_str = p;
-	nl = memchr(id_str, '\n', (size_t)(end - id_str));
+	nl = (char*)memchr(id_str, '\n', (size_t)(end - id_str));
 	if (nl == NULL) {
 		return 1;
 	}
