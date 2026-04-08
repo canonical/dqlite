@@ -223,7 +223,7 @@ int transportDefaultConnect(void *arg, const char *address, int *fd)
 	}
 
 	dqlite_assert(addr->sa_family == AF_INET || addr->sa_family == AF_INET6);
-	*fd = socket(addr->sa_family, SOCK_STREAM, 0);
+	*fd = socket(addr->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (*fd == -1) {
 		return RAFT_NOCONNECTION;
 	}
