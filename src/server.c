@@ -244,13 +244,8 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 	domain = addr->sa_family;
 
-	fd = socket(domain, SOCK_STREAM, 0);
+	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd == -1) {
-		return DQLITE_ERROR;
-	}
-	rv = fcntl(fd, FD_CLOEXEC);
-	if (rv != 0) {
-		close(fd);
 		return DQLITE_ERROR;
 	}
 

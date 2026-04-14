@@ -13,7 +13,7 @@ static int endpointConnect(void *data, const char *address, int *fd)
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path + 1, address + 1);
-	*fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	*fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	munit_assert_int(*fd, !=, -1);
 	rv = connect(*fd, (struct sockaddr *)&addr,
 		     sizeof(sa_family_t) + strlen(address + 1) + 1);
