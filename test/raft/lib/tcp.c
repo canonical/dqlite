@@ -69,9 +69,9 @@ int TcpServerAccept(struct TcpServer *s)
 
     size = sizeof(address);
 
-    socket = accept(s->socket, (struct sockaddr *)&address, &size);
+    socket = accept4(s->socket, (struct sockaddr *)&address, &size, SOCK_CLOEXEC);
     if (socket < 0) {
-        munit_errorf("tcp server: accept(): %s", strerror(errno));
+        munit_errorf("tcp server: accept4(): %s", strerror(errno));
     }
 
     return socket;
@@ -227,9 +227,9 @@ int test_tcp_accept(struct test_tcp *t)
 
     size = sizeof(address);
 
-    socket = accept(t->server.socket, (struct sockaddr *)&address, &size);
+    socket = accept4(t->server.socket, (struct sockaddr *)&address, &size, SOCK_CLOEXEC);
     if (socket < 0) {
-        munit_errorf("tcp: accept(): %s", strerror(errno));
+        munit_errorf("tcp: accept4(): %s", strerror(errno));
     }
 
     return socket;
