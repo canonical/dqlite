@@ -160,7 +160,29 @@ TEST(node, startInetStopTwice, setUpInet, tearDown, 0, node_params)
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_stop(f->node);
-	munit_assert_int(rv, ==, EBADF);
+	munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+	return MUNIT_OK;
+}
+
+TEST(node, stopBeforeStart, setUpLocal, tearDown, 0, node_params)
+{
+	struct fixture *f = data;
+	int rv;
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+	return MUNIT_OK;
+}
+
+TEST(node, handoverBeforeStart, setUpLocal, tearDown, 0, node_params)
+{
+	struct fixture *f = data;
+	int rv;
+
+	rv = dqlite_node_handover(f->node);
+	munit_assert_int(rv, ==, DQLITE_MISUSE);
 
 	return MUNIT_OK;
 }
