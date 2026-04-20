@@ -244,13 +244,8 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 	domain = addr->sa_family;
 
-	fd = socket(domain, SOCK_STREAM, 0);
+	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd == -1) {
-		return DQLITE_ERROR;
-	}
-	rv = fcntl(fd, FD_CLOEXEC);
-	if (rv != 0) {
-		close(fd);
 		return DQLITE_ERROR;
 	}
 
@@ -872,6 +867,10 @@ int dqlite_node_handover(dqlite_node *d)
 {
 	int rv;
 
+	if (!d->running) {
+		return DQLITE_MISUSE;
+	}
+
 	rv = uv_async_send(&d->handover);
 	dqlite_assert(rv == 0);
 
@@ -885,6 +884,10 @@ int dqlite_node_stop(dqlite_node *d)
 	tracef("dqlite node stop");
 	void *result;
 	int rv;
+
+	if (!d->running) {
+		return DQLITE_MISUSE;
+	}
 
 	/* Prevents using @d multiple times from different contexts */
 	if (d->lock_fd == -EBADF) {
@@ -1111,7 +1114,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 	struct client_node_info info;
 
 	version_str = p;
-	nl = memchr(p, '\n', (size_t)(end - version_str));
+	nl = (char*)memchr(p, '\n', (size_t)(end - version_str));
 	if (nl == NULL) {
 		return 1;
 	}
@@ -1123,7 +1126,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 
 	while (p != end) {
 		addr = p;
-		nl = memchr(p, '\n', (size_t)(end - addr));
+		nl = (char*)memchr(p, '\n', (size_t)(end - addr));
 		if (nl == NULL) {
 			return 1;
 		}
@@ -1131,7 +1134,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 		p = nl + 1;
 
 		id_str = p;
-		nl = memchr(p, '\n', (size_t)(end - id_str));
+		nl = (char*)memchr(p, '\n', (size_t)(end - id_str));
 		if (nl == NULL) {
 			return 1;
 		}
@@ -1150,7 +1153,7 @@ static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
 		}
 
 		role_str = p;
-		nl = memchr(p, '\n', (size_t)(end - role_str));
+		nl = (char*)memchr(p, '\n', (size_t)(end - role_str));
 		if (nl == NULL) {
 			return 1;
 		}
@@ -1247,7 +1250,7 @@ static int parseLocalInfo(char *buf,
 	unsigned long long id;
 
 	version_str = p;
-	nl = memchr(version_str, '\n', (size_t)(end - version_str));
+	nl = (char*)memchr(version_str, '\n', (size_t)(end - version_str));
 	if (nl == NULL) {
 		return 1;
 	}
@@ -1258,7 +1261,7 @@ static int parseLocalInfo(char *buf,
 	}
 
 	addr = p;
-	nl = memchr(addr, '\n', (size_t)(end - addr));
+	nl = (char*)memchr(addr, '\n', (size_t)(end - addr));
 	if (nl == NULL) {
 		return 1;
 	}
@@ -1266,7 +1269,7 @@ static int parseLocalInfo(char *buf,
 	p = nl + 1;
 
 	id_str = p;
-	nl = memchr(id_str, '\n', (size_t)(end - id_str));
+	nl = (char*)memchr(id_str, '\n', (size_t)(end - id_str));
 	if (nl == NULL) {
 		return 1;
 	}

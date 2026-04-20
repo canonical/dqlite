@@ -144,13 +144,13 @@ int test_endpoint_accept(struct test_endpoint *e)
 	}
 
 	/* Accept the client connection. */
-	fd = accept(e->fd, address, &size);
+	fd = accept4(e->fd, address, &size, SOCK_CLOEXEC);
 	if (fd < 0) {
 		/* Check if the endpoint has been closed, so this is benign. */
 		if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK) {
 			return -1;
 		}
-		munit_errorf("accept(): %s", strerror(errno));
+		munit_errorf("accept4(): %s", strerror(errno));
 	}
 
 	/* Set non-blocking mode */
