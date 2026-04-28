@@ -68,7 +68,6 @@ jobs:
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
-        LIBDQLITE_TRACE: 1
         ASAN_OPTIONS: fast_unwind_on_malloc=0
       run: |
           ./test/raft/lib/fs.sh setup
