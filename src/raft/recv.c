@@ -1,7 +1,6 @@
 #include "recv.h"
 
 #include "../lib/assert.h"
-#include "../tracing.h"
 #include "convert.h"
 #include "entry.h"
 #include "heap.h"
@@ -14,6 +13,7 @@
 #include "recv_request_vote.h"
 #include "recv_timeout_now.h"
 #include "string.h"
+#include "tracing.h"
 
 /* Dispatch a single RPC message to the appropriate handler. */
 static int recvMessage(struct raft *r, struct raft_message *message)
@@ -110,6 +110,7 @@ void recvCb(struct raft_io *io, struct raft_message *message)
 	if (rv != 0) {
 		convertToUnavailable(r);
 	}
+	raft_emit_trace_event(r);
 }
 
 int recvBumpCurrentTerm(struct raft *r, raft_term term)

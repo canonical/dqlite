@@ -91,6 +91,9 @@ struct dqlite_server {
 	void *connect_arg;
 	unsigned long long refresh_period; /* in milliseconds */
 	int dir_fd;
+	
+	void *trace_data;
+	dqlite_trace_cb trace_cb;
 };
 
 int dqlite__init(struct dqlite_node *d,

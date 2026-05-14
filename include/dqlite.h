@@ -169,6 +169,26 @@ DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_set_connect_func(
     dqlite_connect_func f,
     void *arg);
 
+/* This type is a summary of the raft state, useful for tracing. */
+struct dqlite_trace {
+	/* 
+	 * Unfortunately, the following fields are untyped as the current project
+	 * structure does not allow us to expose the raft types in this header.
+	 */
+	uint64_t state; /* UNAVAILABLE = 0, FOLLOWER = 1, CANDIDATE = 2, LEADER = 3 */
+	uint64_t term;
+	uint64_t last_stored, commit_index, last_applied;
+	uint64_t known_leader_id, voted_for;
+};
+
+/**
+ * Callback invoked by raft when raft state changes, with the details of the new state.
+ */
+typedef void (*dqlite_trace_cb)(void *data, const struct dqlite_trace *trace);
+
+
+DQLITE_API DQLITE_EXPERIMENTAL void dqlite_server_register_trace_callback(dqlite_server *server, dqlite_trace_cb cb, void *data);
+
 /**
  * Start running the server.
  *
