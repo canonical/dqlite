@@ -1397,6 +1397,37 @@ int dqlite_server_set_connect_func(dqlite_server *server,
 	return 0;
 }
 
+static void trace_callback(void *data, const struct raft_trace *trace) {
+	dqlite_assert(data && trace);
+	dqlite_server *server = (dqlite_server *)data;
+	dqlite_assert(server);
+
+	const struct dqlite_trace t = {
+		.state = trace->state,
+		.term = trace->term,
+		.last_stored = trace->last_stored,
+		.commit_index = trace->commit_index,
+		.last_applied = trace->last_applied,
+		.known_leader_id = trace->known_leader_id,
+		.voted_for = trace->voted_for,
+	};
+	server->trace_cb(server->trace_data, &t);
+}
+
+void dqlite_server_register_trace_callback(dqlite_server *server, dqlite_trace_cb cb, void *data)
+{
+	struct raft *r = &server->local->raft;
+	if (cb == NULL) {
+		server->trace_cb = NULL;
+		server->trace_data = NULL;
+		raft_register_trace_cb(r, NULL, NULL);
+	} else {
+		server->trace_cb = cb;
+		server->trace_data = data;
+		raft_register_trace_cb(&server->local->raft, trace_callback, server);
+	}
+}
+
 static int openAndHandshake(struct client_proto *proto,
 			    const char *addr,
 			    uint64_t id,
