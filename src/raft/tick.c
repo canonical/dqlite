@@ -1,12 +1,12 @@
 #include "../lib/assert.h"
 #include "../raft.h"
-#include "../tracing.h"
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
 #include "membership.h"
 #include "progress.h"
 #include "replication.h"
+#include "tracing.h"
 
 /* Apply time-dependent rules for followers (Figure 3.1). */
 static int tickFollower(struct raft *r)
@@ -175,7 +175,7 @@ static int tickLeader(struct raft *r)
 		server_index = configurationIndexOf(&r->configuration, id);
 		dqlite_assert(server_index < r->configuration.n);
 		dqlite_assert(r->configuration.servers[server_index].role !=
-		       RAFT_VOTER);
+			      RAFT_VOTER);
 
 		is_too_slow =
 		    (r->leader_state.round_number == r->max_catch_up_rounds &&
@@ -212,8 +212,9 @@ static int tick(struct raft *r)
 {
 	int rv = -1;
 
-	dqlite_assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
-	       r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
+	dqlite_assert(r->state == RAFT_UNAVAILABLE ||
+		      r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE ||
+		      r->state == RAFT_LEADER);
 
 	/* If we are not available, let's do nothing. */
 	if (r->state == RAFT_UNAVAILABLE) {
@@ -241,18 +242,17 @@ void tickCb(struct raft_io *io)
 	int rv;
 	r = io->data;
 	rv = tick(r);
-	if (rv != 0) {
+	if (rv != RAFT_OK) {
 		convertToUnavailable(r);
-		return;
-	}
+	} else if (r->transfer != NULL) {
+		/* For all states: if there is a leadership transfer request in
+		 * progress, check if it's expired. */
 
-	/* For all states: if there is a leadership transfer request in
-	 * progress, check if it's expired. */
-	if (r->transfer != NULL) {
 		raft_time now = r->io->time(r->io);
 		if (now - r->transfer->start >= r->election_timeout) {
 			membershipLeadershipTransferClose(r);
 		}
 	}
-}
 
+	raft_emit_trace_event(r);
+}

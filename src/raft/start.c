@@ -1,6 +1,5 @@
 #include "../lib/assert.h"
 #include "../raft.h"
-#include "../tracing.h"
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
@@ -9,6 +8,7 @@
 #include "recv.h"
 #include "snapshot.h"
 #include "tick.h"
+#include "tracing.h"
 
 /* Restore the most recent configuration entry found in the log. */
 static int restoreMostRecentConfigurationEntry(struct raft *r,
@@ -226,6 +226,7 @@ int raft_start(struct raft *r)
 		return rv;
 	}
 
+	raft_emit_trace_event(r);
 	return 0;
 }
 

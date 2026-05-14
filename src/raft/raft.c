@@ -149,6 +149,12 @@ void raft_register_state_cb(struct raft *r, raft_state_cb cb)
 	cbs->state_cb = cb;
 }
 
+void raft_register_trace_cb(struct raft *r, raft_trace_cb cb, void *data)
+{
+	r->trace_cb = cb;
+	r->trace_data = data;
+}
+
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
 	r->election_timeout = msecs;
