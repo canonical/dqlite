@@ -579,38 +579,6 @@ struct raft_io_async_work
 	raft_io_async_work_cb cb; /* Request callback */
 };
 
-/**
- * Customizable tracer, for debugging purposes.
- */
-struct raft_tracer
-{
-	/**
-	 * Implementation-defined state object.
-	 */
-	void *impl;
-
-	/**
-	 * Whether this tracer should emit messages.
-	 */
-	bool enabled;
-
-	/**
-	 * Trace level.
-	 */
-	unsigned level;
-
-	/**
-	 * Emit the given trace message, possibly decorating it with the
-	 * provided metadata.
-	 */
-	void (*emit)(struct raft_tracer *t,
-		     const char *file,
-		     unsigned int line,
-		     const char *func,
-		     unsigned int level,
-		     const char *message);
-};
-
 struct raft_io; /* Forward declaration. */
 
 /**
@@ -1559,12 +1527,6 @@ RAFT_API int raft_uv_set_snapshot_compression(struct raft_io *io,
  */
 RAFT_API void raft_uv_set_connect_retry_delay(struct raft_io *io,
 					      unsigned msecs);
-
-/**
- * Emit low-level debug messages using the given tracer.
- */
-RAFT_API void raft_uv_set_tracer(struct raft_io *io,
-				 struct raft_tracer *tracer);
 
 /**
  * Enable or disable auto-recovery on startup. Default enabled.

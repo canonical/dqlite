@@ -36,7 +36,6 @@ struct raft_fixture_server
 	bool alive;                /* If false, the server is down. */
 	raft_id id;                /* Server ID. */
 	char address[16];          /* Server address (stringified ID). */
-	struct raft_tracer tracer; /* Tracer. */
 	struct raft_io io;         /* In-memory raft_io implementation. */
 	struct raft raft;          /* Raft instance. */
 };
@@ -1045,20 +1044,6 @@ void ioClose(struct raft_io *raft_io)
 	raft_free(io);
 }
 
-/* Custom emit tracer function which include the server ID. */
-static void emit(struct raft_tracer *t,
-		 const char *file,
-		 unsigned int line,
-		 const char *func,
-		 unsigned int level,
-		 const char *message)
-{
-	unsigned id = *(unsigned *)t->impl;
-	(void)func;
-	(void)level;
-	fprintf(stderr, "%d: %30s:%*d - %s\n", id, file, 3, line, message);
-}
-
 static int serverInit(struct raft_fixture *f, unsigned i, struct raft_fsm *fsm)
 {
 	int rv;
@@ -1082,9 +1067,6 @@ static int serverInit(struct raft_fixture *f, unsigned i, struct raft_fsm *fsm)
 	raft_set_election_timeout(&s->raft, ELECTION_TIMEOUT);
 	raft_set_heartbeat_timeout(&s->raft, HEARTBEAT_TIMEOUT);
 	raft_set_install_snapshot_timeout(&s->raft, INSTALL_SNAPSHOT_TIMEOUT);
-	s->tracer.impl = (void *)&s->id;
-	s->tracer.emit = emit;
-	s->raft.tracer = NULL;
 	return 0;
 }
 

@@ -813,13 +813,6 @@ void raft_uv_set_connect_retry_delay(struct raft_io *io, unsigned msecs)
 	uv->connect_retry_delay = msecs;
 }
 
-void raft_uv_set_tracer(struct raft_io *io, struct raft_tracer *tracer)
-{
-	struct uv *uv;
-	uv = io->impl;
-	uv->tracer = tracer;
-}
-
 void raft_uv_set_auto_recovery(struct raft_io *io, bool flag)
 {
 	struct uv *uv;
