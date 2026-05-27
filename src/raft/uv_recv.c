@@ -246,8 +246,8 @@ static void uvServerReadCb(uv_stream_t *stream,
 				tracef("message has zero length");
 				goto abort;
 			} else if (s->header.len > MAX_HEADER_LEN) {
-				tracef("message header too long: %zu bytes",
-				       s->header.len);
+				tracef("message header too long: %" PRIu64 " bytes",
+				       (uint64_t)s->header.len);
 				goto abort;
 			}
 		} else if (s->payload.len == 0) {
@@ -284,8 +284,8 @@ static void uvServerReadCb(uv_stream_t *stream,
 			if (s->payload.len == 0) {
 				uvFireRecvCb(s);
 			} else if (s->payload.len > MAX_PAYLOAD_LEN) {
-				tracef("message payload too long: %zu bytes",
-				       s->payload.len);
+				tracef("message payload too long: %" PRIu64 " bytes",
+				       (uint64_t)s->payload.len);
 				raft_free(s->message.append_entries.entries);
 				s->message.append_entries.entries = NULL;
 				s->message.append_entries.n_entries = 0;
