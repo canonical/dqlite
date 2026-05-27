@@ -56,7 +56,6 @@ static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 {
 	size_t conf_size = configurationEncodedSize(&p->conf);
 	return sizeof(uint64_t) + /* Leader's term. */
-	       sizeof(uint64_t) + /* Leader ID */
 	       sizeof(uint64_t) + /* Snapshot's last index */
 	       sizeof(uint64_t) + /* Term of last index */
 	       sizeof(uint64_t) + /* Configuration's index */
