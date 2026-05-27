@@ -20,6 +20,7 @@ int uvDecodeMessage(uint16_t type,
 		    size_t *payload_len);
 
 int uvDecodeBatchHeader(const void *batch,
+			size_t batch_len,
 			struct raft_entry **entries,
 			unsigned *n);
 

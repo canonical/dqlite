@@ -10,6 +10,9 @@
 #include "uv.h"
 #include "uv_encoding.h"
 
+#define MAX_HEADER_LEN (4 * 1024 * 1024)    /* 4 MiB */
+#define MAX_PAYLOAD_LEN (500 * 1024 * 1024) /* 500 MiB */
+
 /* The happy path for a receiving an RPC message is:
  *
  * - When a peer server successfully establishes a new connection with us, the
@@ -38,8 +41,7 @@
  *   handle and act like above.
  */
 
-struct uvServer
-{
+struct uvServer {
 	struct uv *uv;              /* libuv I/O implementation object */
 	raft_id id;                 /* ID of the remote server */
 	char *address;              /* Address of the other server */
@@ -243,6 +245,10 @@ static void uvServerReadCb(uv_stream_t *stream,
 			if (s->header.len == 0) {
 				tracef("message has zero length");
 				goto abort;
+			} else if (s->header.len > MAX_HEADER_LEN) {
+				tracef("message header too long: %zu bytes",
+				       s->header.len);
+				goto abort;
 			}
 		} else if (s->payload.len == 0) {
 			/* If the payload buffer is not set, it means we just
@@ -277,6 +283,13 @@ static void uvServerReadCb(uv_stream_t *stream,
 			/* If the message has no payload, we're done. */
 			if (s->payload.len == 0) {
 				uvFireRecvCb(s);
+			} else if (s->payload.len > MAX_PAYLOAD_LEN) {
+				tracef("message payload too long: %zu bytes",
+				       s->payload.len);
+				raft_free(s->message.append_entries.entries);
+				s->message.append_entries.entries = NULL;
+				s->message.append_entries.n_entries = 0;
+				goto abort;
 			}
 		} else {
 			/* If we get here it means that we've just completed
@@ -419,4 +432,3 @@ void UvRecvClose(struct uv *uv)
 		uvServerAbort(server);
 	}
 }
-

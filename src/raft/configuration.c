@@ -319,6 +319,7 @@ int configurationDecode(const struct raft_buffer *buf,
 			struct raft_configuration *c)
 {
 	const void *cursor;
+	size_t remaining;
 	size_t i;
 	size_t n;
 	int rv;
@@ -326,12 +327,15 @@ int configurationDecode(const struct raft_buffer *buf,
 	dqlite_assert(c != NULL);
 	dqlite_assert(buf != NULL);
 
-	/* TODO: use 'if' instead of assert for checking buffer boundaries */
-	dqlite_assert(buf->len > 0);
-
 	configurationInit(c);
 
 	cursor = buf->base;
+	remaining = buf->len;
+
+	if (remaining < sizeof(uint8_t) + sizeof(uint64_t)) {
+		rv = RAFT_MALFORMED;
+		goto err;
+	}
 
 	/* Check the encoding format version */
 	if (byteGet8(&cursor) != ENCODING_FORMAT) {
@@ -341,27 +345,43 @@ int configurationDecode(const struct raft_buffer *buf,
 
 	/* Read the number of servers. */
 	n = (size_t)byteGet64(&cursor);
+	remaining -= sizeof(uint8_t) + sizeof(uint64_t);
 
 	/* Decode the individual servers. */
 	for (i = 0; i < n; i++) {
 		raft_id id;
 		const char *address;
+		const uint8_t *before;
+		size_t consumed;
 		int role;
+
+		if (remaining < sizeof(uint64_t)) {
+			rv = RAFT_MALFORMED;
+			goto err;
+		}
 
 		/* Server ID. */
 		id = byteGet64(&cursor);
+		remaining -= sizeof(uint64_t);
 
 		/* Server Address. */
-		address = byteGetString(
-		    &cursor, buf->len - (size_t)((uint8_t *)cursor -
-						 (uint8_t *)buf->base));
+		before = (const uint8_t *)cursor;
+		address = byteGetString(&cursor, remaining);
 		if (address == NULL) {
+			rv = RAFT_MALFORMED;
+			goto err;
+		}
+		consumed = (size_t)((const uint8_t *)cursor - before);
+		dqlite_assert(consumed <= remaining);
+		remaining -= consumed;
+		if (remaining < sizeof(uint8_t)) {
 			rv = RAFT_MALFORMED;
 			goto err;
 		}
 
 		/* Role code. */
 		role = byteGet8(&cursor);
+		remaining -= sizeof(uint8_t);
 
 		rv = configurationAdd(c, id, address, role);
 		if (rv != 0) {
@@ -375,7 +395,7 @@ int configurationDecode(const struct raft_buffer *buf,
 		}
 	}
 
-	return 0;
+	return RAFT_OK;
 
 err:
 	dqlite_assert(rv == RAFT_MALFORMED || rv == RAFT_NOMEM);
