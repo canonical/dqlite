@@ -286,9 +286,11 @@ static void uvServerReadCb(uv_stream_t *stream,
 			} else if (s->payload.len > MAX_PAYLOAD_LEN) {
 				tracef("message payload too long: %" PRIu64 " bytes",
 				       (uint64_t)s->payload.len);
-				raft_free(s->message.append_entries.entries);
-				s->message.append_entries.entries = NULL;
-				s->message.append_entries.n_entries = 0;
+				if (s->message.type == RAFT_IO_APPEND_ENTRIES) {
+					raft_free(s->message.append_entries.entries);
+					s->message.append_entries.entries = NULL;
+					s->message.append_entries.n_entries = 0;
+				}
 				goto abort;
 			}
 		} else {

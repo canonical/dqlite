@@ -15,28 +15,31 @@
 	(sizeof(uint64_t) /* Message type. */ + \
 	 sizeof(uint64_t) /* Message size. */)
 
+#define REQUEST_VOTE_V1_SIZE                      \
+	(sizeof(uint64_t) + /* Term. */           \
+	 sizeof(uint64_t) + /* Candidate ID. */   \
+	 sizeof(uint64_t) + /* Last log index. */ \
+	 sizeof(uint64_t) /* Last log term. */)
 
-
-#define REQUEST_VOTE_V1_SIZE (sizeof(uint64_t) + /* Term. */ \
-			    sizeof(uint64_t) + /* Candidate ID. */ \
-			    sizeof(uint64_t) + /* Last log index. */ \
-			    sizeof(uint64_t) /* Last log term. */)
-
-#define REQUEST_VOTE_V2_SIZE (REQUEST_VOTE_V1_SIZE + sizeof(uint64_t) /* Flags. */)
-#define REQUEST_VOTE_RESULT_V1_SIZE (sizeof(uint64_t) + /* Term. */ \
-				      sizeof(uint64_t) /* Vote granted. */)
+#define REQUEST_VOTE_V2_SIZE \
+	(REQUEST_VOTE_V1_SIZE + sizeof(uint64_t) /* Flags. */)
+#define REQUEST_VOTE_RESULT_V1_SIZE     \
+	(sizeof(uint64_t) + /* Term. */ \
+	 sizeof(uint64_t) /* Vote granted. */)
 #define REQUEST_VOTE_RESULT_V2_SIZE \
 	(REQUEST_VOTE_RESULT_V1_SIZE + sizeof(uint64_t) /* Flags. */)
-#define APPEND_ENTRIES_RESULT_V0_SIZE (sizeof(uint64_t) + /* Term. */ \
-				       sizeof(uint64_t) + /* Success. */ \
-				       sizeof(uint64_t) /* Last log index. */)
+#define APPEND_ENTRIES_RESULT_V0_SIZE      \
+	(sizeof(uint64_t) + /* Term. */    \
+	 sizeof(uint64_t) + /* Success. */ \
+	 sizeof(uint64_t) /* Last log index. */)
 #define APPEND_ENTRIES_RESULT_V1_SIZE \
 	(APPEND_ENTRIES_RESULT_V0_SIZE + sizeof(uint64_t) /* 64 bit Flags. */)
 #define APPEND_ENTRIES_REQUEST_PREFIX_SIZE \
 	(4 * sizeof(uint64_t) /* term, prev_log_index, prev_log_term, leader_commit */)
-#define TIMEOUT_NOW_SIZE (sizeof(uint64_t) + /* Term. */ \
-			  sizeof(uint64_t) + /* Last log index. */ \
-			  sizeof(uint64_t) /* Last log term. */)
+#define TIMEOUT_NOW_SIZE                          \
+	(sizeof(uint64_t) + /* Term. */           \
+	 sizeof(uint64_t) + /* Last log index. */ \
+	 sizeof(uint64_t) /* Last log term. */)
 
 static size_t sizeofAppendEntries(const struct raft_append_entries *p)
 {
@@ -48,7 +51,6 @@ static size_t sizeofAppendEntries(const struct raft_append_entries *p)
 	       sizeof(uint64_t) + /* Number of entries in the batch */
 	       16 * p->n_entries /* One header per entry */;
 }
-
 
 static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 {
@@ -65,8 +67,9 @@ static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 
 size_t uvSizeofBatchHeader(size_t n)
 {
-	size_t res = 8 + /* Number of entries in the batch, little endian */
-		16 * n; /* One header per entry */;
+	size_t res = 8 +     /* Number of entries in the batch, little endian */
+		     16 * n; /* One header per entry */
+	;
 	return res;
 }
 
@@ -301,7 +304,8 @@ static int decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
 {
 	const void *cursor;
 
-	if (buf->len != REQUEST_VOTE_V2_SIZE && buf->len != REQUEST_VOTE_V1_SIZE) {
+	if (buf->len != REQUEST_VOTE_V2_SIZE &&
+	    buf->len != REQUEST_VOTE_V1_SIZE) {
 		return RAFT_MALFORMED;
 	}
 
@@ -437,9 +441,9 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 	args->prev_log_term = byteGet64(&cursor);
 	args->leader_commit = byteGet64(&cursor);
 
-	return uvDecodeBatchHeader(cursor,
-				 buf->len - APPEND_ENTRIES_REQUEST_PREFIX_SIZE,
-				 &args->entries, &args->n_entries);
+	return uvDecodeBatchHeader(
+	    cursor, buf->len - APPEND_ENTRIES_REQUEST_PREFIX_SIZE,
+	    &args->entries, &args->n_entries);
 }
 
 static int decodeAppendEntriesResult(const uv_buf_t *buf,
@@ -560,10 +564,14 @@ int uvDecodeMessage(uint16_t type,
 			rv = decodeAppendEntries(header,
 						 &message->append_entries);
 			*payload_len = 0;
-			for (i = 0; i < message->append_entries.n_entries;
-			     i++) {
-				*payload_len +=
-				    message->append_entries.entries[i].buf.len;
+			if (rv == RAFT_OK) {
+				for (i = 0;
+				     i < message->append_entries.n_entries;
+				     i++) {
+					*payload_len +=
+					    message->append_entries.entries[i]
+						.buf.len;
+				}
 			}
 			break;
 		case RAFT_IO_APPEND_ENTRIES_RESULT:
