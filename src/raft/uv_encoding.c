@@ -377,8 +377,7 @@ int uvDecodeBatchHeader(const void *batch,
 		return RAFT_OK;
 	}
 
-	*entries = raft_malloc(*n * sizeof **entries);
-
+	*entries = raft_calloc(*n, sizeof **entries);
 	if (*entries == NULL) {
 		rv = RAFT_NOMEM;
 		goto err;
