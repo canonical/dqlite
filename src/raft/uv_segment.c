@@ -661,6 +661,10 @@ err:
 static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 					      size_t size)
 {
+	if (size > SIZE_MAX - b->block_size) {
+		return RAFT_NOMEM;
+	}
+
 	unsigned n = (unsigned)(size / b->block_size);
 	void *base;
 	size_t len;
