@@ -511,10 +511,6 @@ static int decodeInstallSnapshot(const uv_buf_t *buf,
 	args->data.len = (size_t)byteGet64(&cursor);
 	remaining -= sizeof(uint64_t);
 
-	if (remaining != 0) {
-		return RAFT_MALFORMED;
-	}
-
 	return RAFT_OK;
 }
 
