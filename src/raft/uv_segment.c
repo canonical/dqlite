@@ -287,7 +287,7 @@ int uvLoadEntriesBatch(const struct raft_buffer *content,
 	}
 
 	/* Decode the batch header, allocating the entries array. */
-	rv = uvDecodeBatchHeader(header.base, entries, n_entries);
+	rv = uvDecodeBatchHeader(header.base, header.len, entries, n_entries);
 	if (rv != 0) {
 		goto err;
 	}
@@ -661,13 +661,17 @@ err:
 static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 					      size_t size)
 {
+	if (size > SIZE_MAX - b->block_size) {
+		return RAFT_NOMEM;
+	}
+
 	unsigned n = (unsigned)(size / b->block_size);
 	void *base;
 	size_t len;
 
 	if (b->arena.len >= size) {
 		dqlite_assert(b->arena.base != NULL);
-		return 0;
+		return RAFT_OK;
 	}
 
 	if (size % b->block_size != 0) {
@@ -692,7 +696,7 @@ static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 	b->arena.base = base;
 	b->arena.len = len;
 
-	return 0;
+	return RAFT_OK;
 }
 
 void uvSegmentBufferInit(struct uvSegmentBuffer *b, size_t block_size)
