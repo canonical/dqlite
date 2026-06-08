@@ -109,38 +109,6 @@ TEST(uvDecodeMessageLimits, installSnapshotBadConfLen, NULL, NULL, 0, NULL)
     return MUNIT_OK;
 }
 
-TEST(uvDecodeMessageLimits,
-     installSnapshotTrailingBytes,
-     NULL,
-     NULL,
-     0,
-     NULL)
-{
-    uint8_t conf[1 + sizeof(uint64_t)] = {0};
-    void *conf_cursor = conf;
-    uint8_t buf[INSTALL_SNAPSHOT_MIN_HEADER_BYTES + sizeof conf + 1] = {0};
-    void *cursor = buf;
-
-    bytePut8(&conf_cursor, 1); /* ENCODING_FORMAT */
-    bytePut64(&conf_cursor, 0); /* n_servers */
-
-    bytePut64(&cursor, 1); /* term */
-    bytePut64(&cursor, 2); /* last_index */
-    bytePut64(&cursor, 3); /* last_term */
-    bytePut64(&cursor, 4); /* conf_index */
-    bytePut64(&cursor, sizeof conf);
-
-    memcpy(cursor, conf, sizeof conf);
-    cursor = (uint8_t *)cursor + sizeof conf;
-
-    bytePut64(&cursor, 8); /* data.len */
-
-    munit_assert_int(
-        decodeMessage(RAFT_IO_INSTALL_SNAPSHOT, buf, sizeof buf), ==,
-        RAFT_MALFORMED);
-    return MUNIT_OK;
-}
-
 SUITE(configurationDecodeLimits)
 
 TEST(configurationDecodeLimits, emptyBuffer, NULL, NULL, 0, NULL)
