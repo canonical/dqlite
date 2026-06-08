@@ -288,7 +288,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	}
 
 	/* Decode the batch header, allocating the entries array. */
-	rv = uvDecodeBatchHeader(header.base, entries, n_entries);
+	rv = uvDecodeBatchHeader(header.base, header.len, entries, n_entries);
 	if (rv != 0) {
 		goto err;
 	}
@@ -663,6 +663,10 @@ err:
 static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 					      size_t size)
 {
+	if (size > SIZE_MAX - b->block_size) {
+		return RAFT_NOMEM;
+	}
+
 	unsigned n = (unsigned)(size / b->block_size);
 	void *base;
 	size_t len;

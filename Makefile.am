@@ -220,6 +220,7 @@ raft_core_unit_test_SOURCES = \
   test/raft/unit/test_byte.c \
   test/raft/unit/test_compress.c \
   test/raft/unit/test_configuration.c \
+  test/raft/unit/test_encoding_limits.c \
   test/raft/unit/test_err.c \
   test/raft/unit/test_flags.c \
   test/raft/unit/test_log.c \
