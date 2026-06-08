@@ -239,9 +239,6 @@ static void uvServerReadCb(uv_stream_t *stream,
 			dqlite_assert(s->header.base == NULL);
 
 			s->header.len = (size_t)byteFlip64(s->preamble[1]);
-
-			/* The length of the header must be greater than zero.
-			 */
 			if (s->header.len == 0) {
 				tracef("message has zero length");
 				goto abort;
