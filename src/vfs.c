@@ -303,7 +303,7 @@ struct vfsShm {
 /* Initialize the shared memory mapping of a database file. */
 static int vfsShmInit(struct vfsShm *s)
 {
-	int fd = memfd_create("dqlite-shm", 0);
+	int fd = memfd_create("dqlite-shm", MFD_CLOEXEC);
 	if (fd < 0) {
 		return SQLITE_NOMEM;
 	}
