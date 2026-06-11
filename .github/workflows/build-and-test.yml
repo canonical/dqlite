@@ -28,6 +28,7 @@ jobs:
           sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev xfslibs-dev \
                               linux-libc-dev btrfs-progs xfsprogs zfsutils-linux \
                               lcov sqlite3
+          sudo snap install --classic dqlite-utils
 
     - name: Build dqlite
       env:
@@ -40,7 +41,6 @@ jobs:
 
     - name: Generate test snapshots
       run: |
-          sudo snap install --classic dqlite-utils
           (mkdir test-snapshots &&
             cd test-snapshots && \
             # Simple cases
