@@ -49,6 +49,17 @@ sudo apt-get update
 sudo apt-get install libdqlite-dev
 ```
 
+## 调试
+
+要检查正在运行的 dqlite 实例的状态，或创建数据快照以加载到节点上，请安装 `dqlite-utils` 程序：
+
+```bash
+sudo snap install dqlite-utils --classic
+```
+
+然后运行 `dqlite-utils --dir /path/to/data-dir`。
+获取更多指导，请参阅 [dqlite 文档](https://canonical.com/dqlite/docs)。
+
 ## 源码构建
 
 为了编译构建libdqlite，您需要准备：
