@@ -63,7 +63,7 @@ TEST_SUITE(init);
 TEST_SETUP(init, setup);
 TEST_TEAR_DOWN(init, tear_down);
 
-/* If n is 0, then the prefix is used to dermine the number of elements of the
+/* If n is 0, then the prefix is used to determine the number of elements of the
  * tuple. */
 TEST_CASE(init, n_pages, NULL)
 {

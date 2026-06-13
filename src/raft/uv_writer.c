@@ -272,7 +272,7 @@ int UvWriterInit(struct UvWriter *w,
 		goto err;
 	}
 
-	/* Initialize the array of re-usable event objects. */
+	/* Initialize the array of reusable event objects. */
 	w->events = RaftHeapCalloc(w->n_events, sizeof *w->events);
 	if (w->events == NULL) {
 		/* UNTESTED: todo */

@@ -17,7 +17,7 @@
 #endif
 #endif
 
-/* Compile-time endianess detection (best effort). */
+/* Compile-time endianness detection (best effort). */
 #if (defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)) || \
     (defined(__ARMEL__) && (__ARMEL__ == 1))
 #define BYTE__LITTLE_ENDIAN
@@ -33,7 +33,7 @@ BYTE__INLINE uint32_t byteFlip32(uint32_t v)
 	return v;
 #elif defined(RAFT__BIG_ENDIAN)
 	return __builtin_bswap32(v);
-#else /* Unknown endianess */
+#else /* Unknown endianness */
 	union {
 		uint32_t u;
 		uint8_t v[4];

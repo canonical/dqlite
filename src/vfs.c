@@ -1001,7 +1001,7 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 	 *   read transactions, in an increase-only fashion. As such, it needs
 	 *   a mutex guard as resizing the array might invalidate the pointer.
 	 *   Last, truncation can happen only while holding all locks exclusively
-	 *   and as such it can never happen concurrently on this mehtods (so the
+	 *   and as such it can never happen concurrently on this methods (so the
 	 *   increase-only invariant holds for this method).
 	 */
 
@@ -1414,7 +1414,7 @@ static int vfsMainFileWrite(sqlite3_file *file,
 	 *
 	 * The above reasoning would look like synchronization through mutexes is not
 	 * strictly needed here, however that is only partially true: SQLite might 
-	 * use the `xFileSize` (vfsMainFileSize) to check for file existance without
+	 * use the `xFileSize` (vfsMainFileSize) to check for file existence without
 	 * taking any lock first (i.e. the only locking guarantee is on read and write).
 	 * As such, the code below will still use a (likely uncontended) mutex to guard
 	 * resizing of the page array. See `vfsDatabaseGetPage` and `vfsDatabaseTruncate`.
@@ -1490,7 +1490,7 @@ static int vfsMainFileSize(sqlite3_file *file, sqlite_int64 *size)
 static int vfsWalAppend(struct vfsDatabase *d,
 	const struct vfsTransaction *transaction);
 
-/* Forges a header for deleteion. The starting point is the database
+/* Forges a header for deletion. The starting point is the database
  * header and not the WAL header. The reasoning is that most of the fields
  * will be reset to 0 or to the default value, with the exception of:
  * - The header string;
@@ -1883,7 +1883,7 @@ static void vfsFinalizeTransaction(struct vfsMainFile *f)
  * using this file into a private mapping, so that changes to this region will
  * not be seen by other connections open on the same file.
  *
- * The reson to use this kind of dark magic is that SQLite stores a pointer to
+ * The reason to use this kind of dark magic is that SQLite stores a pointer to
  * the shared memory inside the connection and performs reads and writes
  * directly.
  *
@@ -2895,7 +2895,7 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	/* While holding the lock, check if a checkpoint should be attempted */
 	bool checkpoint = f->database->wal.n_frames >= f->vfs->config->checkpoint_threshold;
 
-	/* If this is the connection that orginated this commit and on which
+	/* If this is the connection that originated this commit and on which
 	 * dqlite_vfs_poll() was called. The lock must be released and the WAL
 	 * index can be published.
 	 *

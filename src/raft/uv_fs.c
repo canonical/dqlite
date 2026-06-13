@@ -177,7 +177,7 @@ static int uvXfsMaybeReopen(int fd, const char *dir, int flags)
 	/* Given that if this fails the worst thing happening is going back to
 	 * the thread pool, errors here are ignored and the reopening just
 	 * doesn't happen. This will likely be the case, given that (as of
-	 * Linux 6.17) SYS_ADMIN capability is required for this flow to suceed.
+	 * Linux 6.17) SYS_ADMIN capability is required for this flow to succeed.
 	 *
 	 * As of Linux 6.17, there is no userland way to properly control this
 	 * behaviour, but there is a comment around FMODE_NOCMTIME that gives

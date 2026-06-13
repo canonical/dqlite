@@ -222,7 +222,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	return marks;
 }
 
-/* Helper that returns true if the i'th lock of the shared memmory reagion
+/* Helper that returns true if the i'th lock of the shared memory reagion
  * associated with the given database is currently held. */
 static int __shm_shared_lock_held(sqlite3 *db, int i)
 {
@@ -1573,7 +1573,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 				       &log, &ckpt);
 	munit_assert_int(rv, !=, 0);
 
-	/* If we complete the read transaction the shared lock is realeased and
+	/* If we complete the read transaction the shared lock is released and
 	 * the checkpoint succeeds. */
 	EXEC(db2, "COMMIT");
 

@@ -11,7 +11,7 @@
  *
  * - Create a TCP handle and submit a TCP connect request.
  * - Initiate an asynchronous dns resolve request
- * - Once the name lookup was successfull connect to the first given IP
+ * - Once the name lookup was successful connect to the first given IP
  * - Once connected over TCP, submit a write request for the handshake.
  * - Once the write completes, fire the connection request callback.
  *
@@ -21,7 +21,7 @@
  *
  * Possible failure modes are:
  *
- * - The name resolve for the hostname is not sucessfull, close the TCP handle
+ * - The name resolve for the hostname is not successful, close the TCP handle
  *   and fire the request callback.
  *
  * - The transport get closed, close the TCP handle and and fire the request

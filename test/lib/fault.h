@@ -8,7 +8,7 @@
 #include <stdbool.h>
 
 /**
- * Information about a fault that should occurr in a component.
+ * Information about a fault that should occur in a component.
  */
 struct test_fault
 {

@@ -167,7 +167,7 @@ out:
 	*buf = s->buf;
 }
 
-/* Callback invoked afer the stream handle of this server connection has been
+/* Callback invoked after the stream handle of this server connection has been
  * closed. We can release all resources associated with the server object. */
 static void uvServerStreamCloseCb(uv_handle_t *handle)
 {
