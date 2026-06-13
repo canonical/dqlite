@@ -95,7 +95,7 @@ static void tearDown(void *data)
 SUITE(raft_transfer)
 
 /* The follower we ask to transfer leadership to is up-to-date. */
-TEST(raft_transfer, up-to-date, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, upToDate, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     TRANSFER(0, 2);

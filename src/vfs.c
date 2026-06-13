@@ -252,7 +252,7 @@ oom:
 }
 
 /* Fill the header and the content of a WAL frame. The given checksum is the
- * rolling one of all preceeding frames and is updated by this function. */
+ * rolling one of all preceding frames and is updated by this function. */
 static void vfsFrameFill(struct vfsFrame *f,
 			 uint32_t page_number,
 			 uint32_t database_size,
@@ -1507,7 +1507,7 @@ static int vfsWalAppend(struct vfsDatabase *d,
  * checkpoint (so it should match the value of any page-1 frame in the
  * WAL).
  * The schema cookie must be updated to make sure statements are
- * reprepared. To achive this, this method takes a worst-case approach:
+ * reprepared. To achieve this, this method takes a worst-case approach:
  * the worst case is that all frames in the WAL are schema changes
  * that only touch page 1, as such the schema cookie can only be incremented
  * that number of times. */
@@ -1529,7 +1529,7 @@ static void vfsResetDatabaseFileHeader(uint8_t *header, uint32_t max_transaction
 	const size_t freelist_count_offset = 36;
 	memset(header + freelist_count_offset, 0, 4);
 
-	/* To achive this logic takes a worst-case approach: the worst case is
+	/* To achieve this logic takes a worst-case approach: the worst case is
 	 * that all frames in the WAL are schema changes that only touch page 1,
 	 * as such the schema cookie can only be incremented at most that number
 	 * of times. */

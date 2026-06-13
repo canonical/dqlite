@@ -53,7 +53,7 @@ static void tearDown(void *data)
 
 SUITE(raft_voter_contacts)
 
-TEST(raft_voter_contacts, up-to-date, setUp, tearDown, 0, NULL)
+TEST(raft_voter_contacts, upToDate, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 

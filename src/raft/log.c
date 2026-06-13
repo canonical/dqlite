@@ -332,7 +332,7 @@ static bool refsDecr(struct raft_log *l,
 	size_t key;                  /* Hash table key for the given index. */
 	struct raft_entry_ref *slot; /* Slot for the given term/index */
 	struct raft_entry_ref
-	    *prev_slot; /* Slot preceeding the one to decrement */
+	    *prev_slot; /* Slot preceding the one to decrement */
 
 	dqlite_assert(l != NULL);
 	dqlite_assert(term > 0);
@@ -1001,7 +1001,7 @@ void logSnapshot(struct raft_log *l, raft_index last_index, unsigned trailing)
 	l->snapshot.last_index = last_index;
 	l->snapshot.last_term = last_term;
 
-	/* If we have not at least n entries preceeding the given last index,
+	/* If we have not at least n entries preceding the given last index,
 	 * then there's nothing to remove and we're done. */
 	if (last_index <= trailing ||
 	    locateEntry(l, last_index - trailing) == l->size) {

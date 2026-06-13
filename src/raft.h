@@ -273,7 +273,7 @@ struct raft_append_entries
 {
 	int version;
 	raft_term term;            /* Leader's term. */
-	raft_index prev_log_index; /* Index of log entry preceeding new ones. */
+	raft_index prev_log_index; /* Index of log entry preceding new ones. */
 	raft_term prev_log_term;   /* Term of entry at prev_log_index. */
 	raft_index leader_commit;  /* Leader's commit index. */
 	struct raft_entry *entries; /* Log entries to append. */

@@ -1657,7 +1657,7 @@ munit_test_runner_run_test(MunitTestRunner* runner,
 }
 
 /* Recurse through the suite and run all the tests.  If a list of
- * tests to run was provied on the command line, run only those
+ * tests to run was provided on the command line, run only those
  * tests.  */
 static void
 munit_test_runner_run_suite(MunitTestRunner* runner,

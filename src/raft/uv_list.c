@@ -61,7 +61,7 @@ int UvList(const char *dir,
 
 		filename = entry.name;
 
-		/* If an error occurred while processing a preceeding entry or
+		/* If an error occurred while processing a preceding entry or
 		 * if we know that this is not a segment filename, just free it
 		 * and skip to the next one. */
 		if (uvListShouldIgnore(filename)) {

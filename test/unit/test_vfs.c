@@ -222,7 +222,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	return marks;
 }
 
-/* Helper that returns true if the i'th lock of the shared memory reagion
+/* Helper that returns true if the i'th lock of the shared memory region
  * associated with the given database is currently held. */
 static int __shm_shared_lock_held(sqlite3 *db, int i)
 {
@@ -1388,7 +1388,7 @@ TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
 
 SUITE(VfsIntegration)
 
-/* Test our expections on the memory-mapped WAl index format. */
+/* Test our expectations on the memory-mapped WAl index format. */
 TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
