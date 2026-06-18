@@ -70,17 +70,16 @@ sudo apt update
 sudo apt install libdqlite-dev
 ```
 
-Debugging
+Operating
 ---------
 
-To inspect the state of a running dqlite instance or to create a snapshot of data to load onto a node, install the `dqlite-utils` program:
+To inspect the state of a running dqlite instance, create a snapshot of data to load onto a node or even to inspect past database states, install `dqlite-utils`:
 
 ```bash
 sudo snap install dqlite-utils --classic
 ```
 
-Then, run `dqlite-utils --dir /path/to/data-dir`.
-See the [dqlite documentation](https://canonical.com/dqlite/docs) for more guidance.
+See the [dqlite documentation](https://canonical.com/dqlite/docs) for more information.
 
 Contributing
 ------------
