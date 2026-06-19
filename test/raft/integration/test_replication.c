@@ -699,7 +699,7 @@ TEST(replication, recvRollbackConfigurationToPrevious, setUp, tearDown, 0, NULL)
 /* The follower has an uncommitted log entry that conflicts with a new one sent
  * by the leader (same index but different term). The follower's conflicting log
  * entry happens to be a configuration change. The follower's log has been
- * truncated after a snashot and does not contain the previous committed
+ * truncated after a snapshot and does not contain the previous committed
  * configuration anymore. In that case the follower discards the conflicting
  * entry from its log and rolls back its configuration to the previous committed
  * one, which was cached when the snapshot was restored. */
@@ -1129,7 +1129,7 @@ TEST(replication, newTermWhileAppending, setUp, tearDown, 0, NULL)
 }
 
 /* A leader with slow disk commits an entry that it hasn't persisted yet,
- * because enough followers to have a majority have aknowledged that they have
+ * because enough followers to have a majority have acknowledged that they have
  * appended the entry. The leader's last_stored field hence lags behind its
  * commit_index. A new leader gets elected, with a higher commit index and sends
  * first a new entry than a heartbeat to the old leader, that needs to update

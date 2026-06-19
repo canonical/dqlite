@@ -1,0 +1,3 @@
+[codespell]
+skip = ./.git,./.codespellrc,./build,./llvm
+ignore-words-list = Minimum, SOVER, upToDate

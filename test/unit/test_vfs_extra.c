@@ -180,7 +180,7 @@ static void tearDownRestorePendingByte(void *data)
 		sqlite3_free((TX).page_numbers);                 \
 	} while (0)
 
-/* Peform a full checkpoint on the given database. */
+/* Perform a full checkpoint on the given database. */
 #define CHECKPOINT(DB)                                                     \
 	do {                                                               \
 		int _size;                                                 \

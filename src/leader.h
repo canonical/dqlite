@@ -102,7 +102,7 @@ struct exec {
  * Initialize a new leader connection.
  *
  * This function will start the leader loop coroutine and pause it immediately,
- * transfering control back to main coroutine and then opening a new leader
+ * transferring control back to main coroutine and then opening a new leader
  * connection against the given database.
  */
 int leader__init(struct leader *l, struct db *db, struct raft *raft);

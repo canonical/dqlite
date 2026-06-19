@@ -22,3 +22,6 @@ jobs:
     - name: Run clang-format
       run: |
           find . \( -name '*.c' -or -name '*.h' \) -not -name 'munit.*' -path ./llvm -prune | xargs ./llvm/bin/clang-format --style=file --dry-run -Werror
+    - name: Run codespell
+      uses: codespell-project/actions-codespell@v2
+

@@ -43,7 +43,7 @@ int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot)
 	r->configuration_uncommitted_index = 0;
 
 	/* Make a copy of the configuration contained in the snapshot, in case
-	 * r->configuration gets overriden with an uncommitted configuration and
+	 * r->configuration gets overridden with an uncommitted configuration and
 	 * we then need to rollback, but the log does not contain anymore the
 	 * entry at r->configuration_committed_index because it was truncated.
 	 */

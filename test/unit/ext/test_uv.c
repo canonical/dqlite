@@ -187,7 +187,7 @@ static void test_read_sync__read_cb(uv_stream_t *stream,
 {
 	bool *read_cb_called;
 
-	/* Apprently there's an empty read before the actual one. */
+	/* Apparently there's an empty read before the actual one. */
 	if (nread == 0) {
 		free(buf->base);
 		return;
