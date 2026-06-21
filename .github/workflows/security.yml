@@ -1,0 +1,64 @@
+name: C Security Scan
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  flawfinder:
+    name: Flawfinder scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install flawfinder
+        run: sudo apt-get update && sudo apt-get install -y flawfinder
+
+      - name: Run flawfinder
+        run: |
+          flawfinder --sarif -c src > flawfinder-report.json
+
+      - name: Format report
+        run: |
+          total=$(jq '.runs | map(.results) | add | length' flawfinder-report.json)
+          high=$(jq '.runs | map(.results) | add | map(select(.level == "error")) | length' flawfinder-report.json)
+          medium=$(jq '.runs | map(.results) | add | map(select(.level != "error")) | length' flawfinder-report.json)
+
+          echo "## Flawfinder scan" > flawfinder-report.md
+          echo "<details><summary>" >> flawfinder-report.md
+          echo "Total issues found: $total ($high HIGH | $medium MEDIUM)" >> flawfinder-report.md
+          echo "</summary>" >> flawfinder-report.md
+          echo "" >> flawfinder-report.md
+          echo "## Details" >> flawfinder-report.md
+          jq -r '.runs | map(.results) | add | .[] |
+            "\n\nAt `\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)`
+          | Level | Rule |
+          |-|-|
+          |\(.level)|\(.ruleId)|
+
+          *\(.message.text)*\n
+          ```C
+          \(.locations[0].physicalLocation.region.snippet.text)
+          ```\n---\n\n"' flawfinder-report.json >> flawfinder-report.md
+
+          echo "</details>" >> flawfinder-report.md
+
+      - name: Comment flawfinder on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: flawfinder-report.md
+          header: flawfinder-scan
+
+      - name: Fail if flawfinder found high/critical issues
+        run: |
+          high=$(jq '.runs | map(.results) | add | map(select(.level == "error")) | length' flawfinder-report.json)
+          [[ high -gt 0 ]]
