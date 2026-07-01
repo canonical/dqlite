@@ -75,9 +75,25 @@ int transport__stream(struct uv_loop_s *loop,
 		      int fd,
 		      struct uv_stream_s **stream)
 {
-	struct uv_pipe_s *pipe;
 	struct uv_tcp_s *tcp;
 	int rv;
+
+#ifdef _WIN32
+	tcp = raft_malloc(sizeof *tcp);
+	if (tcp == NULL) {
+		return DQLITE_NOMEM;
+	}
+	rv = uv_tcp_init(loop, tcp);
+	dqlite_assert(rv == 0);
+	rv = uv_tcp_open(tcp, (uv_os_sock_t)fd);
+	if (rv != 0) {
+		raft_free(tcp);
+		return TRANSPORT__BADSOCKET;
+	}
+	*stream = (struct uv_stream_s *)tcp;
+	return 0;
+#else
+	struct uv_pipe_s *pipe;
 
 	switch (uv_guess_handle(fd)) {
 		case UV_TCP:
@@ -87,7 +103,7 @@ int transport__stream(struct uv_loop_s *loop,
 			}
 			rv = uv_tcp_init(loop, tcp);
 			dqlite_assert(rv == 0);
-			rv = uv_tcp_open(tcp, fd);
+			rv = uv_tcp_open(tcp, (uv_os_sock_t)fd);
 			if (rv != 0) {
 				raft_free(tcp);
 				return TRANSPORT__BADSOCKET;
@@ -113,6 +129,7 @@ int transport__stream(struct uv_loop_s *loop,
 	};
 
 	return 0;
+#endif
 }
 
 int transport__init(struct transport *t, struct uv_stream_s *stream)

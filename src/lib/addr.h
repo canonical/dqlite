@@ -1,7 +1,7 @@
 #ifndef ADDR_H_
 #define ADDR_H_
 
-#include <sys/socket.h>
+#include <uv.h>
 
 enum {
 	/* Parse Unix socket addresses in @ notation */

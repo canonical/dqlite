@@ -2,14 +2,22 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <ftw.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <uv.h>
+#ifndef _WIN32
+#include <sys/statvfs.h>
+#endif
+#if defined(__APPLE__) && defined(__MACH__)
+#include <sys/fcntl.h>
+#endif
 
 #define SEP "/"
 #define TEMPLATE "raft-test-XXXXXX"
@@ -53,9 +61,13 @@ static char *dirMakeTemp(const char *parent)
     }
     dir = munit_malloc(strlen(parent) + strlen(SEP) + strlen(TEMPLATE) + 1);
     sprintf(dir, "%s%s%s", parent, SEP, TEMPLATE);
-    if (mkdtemp(dir) == NULL) {
-        munit_error(strerror(errno));
+    uv_fs_t req;
+    int rv = uv_fs_mkdtemp(NULL, &req, dir, NULL);
+    if (rv != 0) {
+        munit_error(uv_strerror(rv));
     }
+    strcpy(dir, req.path);
+    uv_fs_req_cleanup(&req);
     return dir;
 }
 
@@ -110,6 +122,7 @@ void *DirXfsSetUp(MUNIT_UNUSED const MunitParameter params[],
     return dirMakeTemp(getenv("RAFT_TMP_XFS"));
 }
 
+#ifndef _WIN32
 /* Wrapper around remove(), compatible with ntfw. */
 static int dirRemoveFn(const char *path,
                        MUNIT_UNUSED const struct stat *sbuf,
@@ -118,15 +131,52 @@ static int dirRemoveFn(const char *path,
 {
     return remove(path);
 }
+#else
+static void dirRemoveRecursive(const char *dir)
+{
+    uv_fs_t scan_req;
+    uv_dirent_t entry;
+    int n = uv_fs_scandir(NULL, &scan_req, dir, 0, NULL);
+    munit_assert_int(n, >=, 0);
+    for (;;) {
+        int rv = uv_fs_scandir_next(&scan_req, &entry);
+        if (rv == UV_EOF) {
+            break;
+        }
+        munit_assert_int(rv, ==, 0);
+        char path[256];
+        snprintf(path, sizeof path, "%s/%s", dir, entry.name);
+        if (entry.type == UV_DIRENT_DIR) {
+            dirRemoveRecursive(path);
+        } else {
+            uv_fs_t unlink_req;
+            rv = uv_fs_unlink(NULL, &unlink_req, path, NULL);
+            munit_assert_int(rv, ==, 0);
+            uv_fs_req_cleanup(&unlink_req);
+        }
+    }
+    uv_fs_req_cleanup(&scan_req);
+    uv_fs_t rmdir_req;
+    int rv = uv_fs_rmdir(NULL, &rmdir_req, dir, NULL);
+    munit_assert_int(rv, ==, 0);
+    uv_fs_req_cleanup(&rmdir_req);
+}
+#endif
 
 static void dirRemove(char *dir)
 {
+#ifndef _WIN32
     int rv;
+#endif
+#ifdef _WIN32
+    dirRemoveRecursive(dir);
+#else
     rv = chmod(dir, 0755);
     munit_assert_int(rv, ==, 0);
 
     rv = nftw(dir, dirRemoveFn, 10, FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
     munit_assert_int(rv, ==, 0);
+#endif
 }
 
 static bool dirExists(const char *dir)
@@ -378,15 +428,24 @@ void DirFill(const char *dir, const size_t n)
 {
     char path[256];
     const char *filename = ".fill";
-    struct statvfs fs;
     size_t size;
     int fd;
     int rv;
 
+#ifdef _WIN32
+    uv_fs_t req;
+    rv = uv_fs_statfs(NULL, &req, dir, NULL);
+    munit_assert_int(rv, ==, 0);
+    uv_statfs_t *fs = uv_fs_get_ptr(&req);
+    size = (size_t)fs->f_bsize * (size_t)fs->f_bavail;
+    uv_fs_req_cleanup(&req);
+#else
+    struct statvfs fs;
     rv = statvfs(dir, &fs);
     munit_assert_int(rv, ==, 0);
 
     size = fs.f_bsize * fs.f_bavail;
+#endif
 
     if (n > 0) {
         munit_assert_int(size, >=, n);
@@ -397,7 +456,26 @@ void DirFill(const char *dir, const size_t n)
     fd = open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     munit_assert_int(fd, !=, -1);
 
+#ifdef _WIN32
+    rv = ftruncate(fd, (off_t)(size - n));
+#elif defined(__APPLE__) && defined(__MACH__)
+    /* Darwin lacks posix_fallocate; use its preallocation API instead. */
+    fstore_t store = {
+        .fst_flags = F_ALLOCATEALL,
+        .fst_posmode = F_PEOFPOSMODE,
+        .fst_offset = 0,
+        .fst_length = (off_t)(size - n),
+        .fst_bytesalloc = 0,
+    };
+    rv = fcntl(fd, F_PREALLOCATE, &store);
+    if (rv != 0) {
+        rv = errno;
+    } else {
+        rv = ftruncate(fd, (off_t)(size - n));
+    }
+#else
     rv = posix_fallocate(fd, 0, size - n);
+#endif
     munit_assert_int(rv, ==, 0);
 
     /* If n is zero, make sure any further write fails with ENOSPC */

@@ -2,7 +2,11 @@
 #ifndef TEST_AIO_H
 #define TEST_AIO_H
 
+#if HAVE_LINUX_AIO_ABI_H
 #include <linux/aio_abi.h>
+#else
+typedef unsigned long aio_context_t;
+#endif
 
 /* Fill the AIO subsystem resources by allocating a lot of events to the given
  * context, and leaving only @n events available for subsequent calls to

@@ -2,12 +2,15 @@
 
 #include <uv.h>
 
+#ifndef _WIN32
 #include <dlfcn.h>
-#include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <netdb.h>
+#endif
 
-#ifdef DQLITE_STATIC_LIBC
+#if defined(DQLITE_STATIC_LIBC) || defined(_WIN32) || \
+    (defined(__APPLE__) && defined(__MACH__))
 
 void AddrinfoInjectSetResponse(int rv,
                                int num_results,
@@ -27,7 +30,7 @@ void AddrinfoInjectTearDown(void)
 {
 }
 
-#else /* ifndef DQLITE_STATIC_LIBC */
+#else /* ifndef DQLITE_STATIC_LIBC && !_WIN32 && !Darwin */
 
 bool addrinfo_mock_enabled = false;
 
@@ -194,4 +197,4 @@ void freeaddrinfo(struct addrinfo *res)
     free(response);
 }
 
-#endif /* ifdef DQLITE_STATIC_LIBC ... else */
+#endif /* ifdef DQLITE_STATIC_LIBC || _WIN32 ... else */

@@ -6,7 +6,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <uv.h>
-#include <uv/unix.h>
 #include "queue.h"
 #include "sm.h"
 #include "../utils.h"
@@ -559,7 +558,7 @@ int pool_init(pool_t *pool,
 		return rc;
 	}
 
-	static uv_once_t once = UV_ONCE_INIT;
+	static uv_once_t once = {0};
 	uv_once(&once, thread_key_create);
 	if (thread_key_create_err != 0) {
 		uv_mutex_destroy(&pi->outq_mutex);

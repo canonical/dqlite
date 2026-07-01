@@ -227,6 +227,7 @@ int raft_bootstrap(struct raft *r, const struct raft_configuration *conf)
 
 	rv = r->io->bootstrap(r->io, conf);
 	if (rv != 0) {
+		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		return rv;
 	}
 

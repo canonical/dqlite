@@ -3,9 +3,6 @@
 #ifndef TEST_SERVER_H
 #define TEST_SERVER_H
 
-#include <pthread.h>
-#include <sys/un.h>
-
 #include "../../src/client/protocol.h"
 
 #include "../../include/dqlite.h"
@@ -19,13 +16,16 @@
 struct test_server
 {
 	unsigned id;         /* Server ID. */
-	char address[8];     /* Server address. */
+	char address[64];    /* Server address. */
 	char *dir;           /* Data directory. */
 	dqlite_node *dqlite; /* Dqlite instance. */
 	bool role_management;
 	struct client_proto client;    /* Connected client. */
 	struct test_server *others[5]; /* Other servers, by ID-1. */
 };
+
+/* Return the address used by a test server ID. */
+const char *test_server_address(unsigned id);
 
 /* Initialize the test server. */
 void test_server_setup(struct test_server *s,
