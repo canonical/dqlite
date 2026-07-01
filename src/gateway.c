@@ -219,11 +219,11 @@ static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
 	if (raft_rc == RAFT_BUSY) {
 		return failure(req, SQLITE_BUSY, sqlite3_errstr(SQLITE_BUSY));
 	}
-	
+
 	if (raft_rc == RAFT_NOTLEADER) {
 		return failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
 	}
-	
+
 	if (raft_rc == RAFT_LEADERSHIPLOST) {
 		return failure(req, SQLITE_IOERR_LEADERSHIP_LOST,
 			       "leadership lost");
@@ -424,7 +424,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	struct request_prepare request = { 0 };
 	int rc;
 
-	if (!IN(req->schema, DQLITE_PREPARE_STMT_SCHEMA_V0,
+	if (!DQLITE_IN(req->schema, DQLITE_PREPARE_STMT_SCHEMA_V0,
 		DQLITE_PREPARE_STMT_SCHEMA_V1)) {
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -561,7 +561,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct request_exec request = { 0 };
 	int rv;
 
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+	if (!DQLITE_IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
 		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
@@ -610,7 +610,7 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 	/* Statement must be finalized manually as it is not in the registry */
 	sqlite3_stmt *stmt = exec->stmt;
 
-	if (raft_status == 0 && g->close_cb == NULL && 
+	if (raft_status == 0 && g->close_cb == NULL &&
 		exec->tail != NULL && exec->tail[0] != '\0') {
 		sqlite3_finalize(stmt);
 		req->parameters_bound = false;
@@ -621,7 +621,7 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 		return leader_exec(g->leader, exec, handle_exec_work_cb,
 				   handle_exec_sql_done_cb);
 	}
-	
+
 	g->req = NULL;
 	raft_free(exec);
 
@@ -646,7 +646,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	struct request_exec_sql request = { 0 };
 	int rv;
 
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+	if (!DQLITE_IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
 		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
@@ -735,7 +735,7 @@ static void query_work_done(struct raft_io_async_work *work, int rc)
 		return;
 	}
 
-	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);		
+	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);
 	return leader_exec_resume(exec);
 }
 
@@ -813,7 +813,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct request_query request = { 0 };
 	int rv;
 
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+	if (!DQLITE_IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
 		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
@@ -908,7 +908,7 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+	if (!DQLITE_IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
 		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
@@ -1182,7 +1182,7 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	strncpy(filename, request.filename,
 		sizeof(filename) - strlen(wal_suffix) - 1);
 	strcat(filename, wal_suffix);
-	static const struct vfsSnapshot empty_wal = {}; 
+	static const struct vfsSnapshot empty_wal = {};
 	rv = dumpFile(filename, &empty_wal, req->buffer);
 	if (rv != 0) {
 		tracef("WAL dump failed");

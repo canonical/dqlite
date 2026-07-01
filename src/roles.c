@@ -140,6 +140,28 @@ static void removeDomain(uint64_t domain, struct compare_data *data)
 	}
 }
 
+typedef int (*node_compare_f)(const void *, const void *, void *);
+
+struct node_sort_ctx {
+	node_compare_f compare;
+	void *arg;
+};
+
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+    defined(__NetBSD__) || defined(__DragonFly__)
+static int sortNodesCompare(void *ctx_arg, const void *left, const void *right)
+{
+	struct node_sort_ctx *sort_ctx = ctx_arg;
+	return sort_ctx->compare(left, right, sort_ctx->arg);
+}
+#elif defined(__GLIBC__)
+static int sortNodesCompare(const void *left, const void *right, void *ctx_arg)
+{
+	struct node_sort_ctx *sort_ctx = ctx_arg;
+	return sort_ctx->compare(left, right, sort_ctx->arg);
+}
+#endif
+
 static int compareNodesForPromotion(const void *l, const void *r, void *p)
 {
 	struct compare_data *data = p;
@@ -170,6 +192,34 @@ static int compareNodesForDemotion(const void *l, const void *r, void *p)
 {
 	/* XXX */
 	return -compareNodesForPromotion(l, r, p);
+}
+
+static void sortNodes(struct all_node_info *nodes,
+		      unsigned n,
+		      node_compare_f compare,
+		      void *arg)
+{
+	struct node_sort_ctx ctx = {
+		.compare = compare,
+		.arg = arg,
+	};
+
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+    defined(__NetBSD__) || defined(__DragonFly__)
+	qsort_r(nodes, n, sizeof *nodes, &ctx, sortNodesCompare);
+#elif defined(__GLIBC__)
+	qsort_r(nodes, n, sizeof *nodes, sortNodesCompare, &ctx);
+#else
+	for (unsigned i = 1; i < n; i++) {
+		struct all_node_info item = nodes[i];
+		unsigned j = i;
+		while (j > 0 && ctx.compare(&nodes[j - 1], &item, ctx.arg) > 0) {
+			nodes[j] = nodes[j - 1];
+			j--;
+		}
+		nodes[j] = item;
+	}
+#endif
 }
 
 static void changeCb(struct raft_change *change, int status);
@@ -280,8 +330,8 @@ void RolesComputeChanges(int voters,
 
 	/* If we don't have enough voters, promote some standbys and spares. */
 	if (voter_count < voters) {
-		qsort_r(cluster, n_cluster, sizeof *cluster,
-			compareNodesForPromotion, &voter_compare);
+		sortNodes(cluster, n_cluster, compareNodesForPromotion,
+			  &voter_compare);
 	}
 	for (i = 0; i < n_cluster && voter_count < voters; i += 1) {
 		if (!cluster[i].online || cluster[i].role == DQLITE_VOTER) {
@@ -304,8 +354,8 @@ void RolesComputeChanges(int voters,
 	 * be picked up in the next step, and the two role changes will be
 	 * consolidated by queueChangeCb. */
 	if (voter_count > voters) {
-		qsort_r(cluster, n_cluster, sizeof *cluster,
-			compareNodesForDemotion, &voter_compare);
+		sortNodes(cluster, n_cluster, compareNodesForDemotion,
+			  &voter_compare);
 	}
 	for (i = 0; i < n_cluster && voter_count > voters; i += 1) {
 		if (cluster[i].role != DQLITE_VOTER || cluster[i].id == my_id) {
@@ -319,8 +369,8 @@ void RolesComputeChanges(int voters,
 
 	/* If we don't have enough standbys, promote some spares. */
 	if (standby_count < standbys) {
-		qsort_r(cluster, n_cluster, sizeof *cluster,
-			compareNodesForPromotion, &standby_compare);
+		sortNodes(cluster, n_cluster, compareNodesForPromotion,
+			  &standby_compare);
 	}
 	for (i = 0; i < n_cluster && standby_count < standbys; i += 1) {
 		if (!cluster[i].online || cluster[i].role != DQLITE_SPARE) {
@@ -334,8 +384,8 @@ void RolesComputeChanges(int voters,
 
 	/* If we have too many standbys, demote some of them. */
 	if (standby_count > standbys) {
-		qsort_r(cluster, n_cluster, sizeof *cluster,
-			compareNodesForDemotion, &standby_compare);
+		sortNodes(cluster, n_cluster, compareNodesForDemotion,
+			  &standby_compare);
 	}
 	for (i = 0; i < n_cluster && standby_count > standbys; i += 1) {
 		if (cluster[i].role != DQLITE_STANDBY) {
@@ -605,8 +655,7 @@ static void handoverVoterCb(struct polling *polling)
 			addDomain(cluster[i].failure_domain, &voter_compare);
 		}
 	}
-	qsort_r(cluster, n_cluster, sizeof *cluster, compareNodesForPromotion,
-		&voter_compare);
+	sortNodes(cluster, n_cluster, compareNodesForPromotion, &voter_compare);
 	target_id = 0;
 	for (i = 0; i < n_cluster; i += 1) {
 		if (cluster[i].online && cluster[i].role != DQLITE_VOTER &&

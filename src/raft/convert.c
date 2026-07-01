@@ -80,7 +80,7 @@ static void freeRaftState(const struct raft *r)
 				queue_remove(head);
 				req = QUEUE_DATA(head, struct request, queue);
 				dqlite_assert(
-				    IN(req->type, RAFT_COMMAND, RAFT_BARRIER));
+				    DQLITE_IN(req->type, RAFT_COMMAND, RAFT_BARRIER));
 				switch (req->type) {
 					case RAFT_COMMAND:
 						convertFailApply(
@@ -118,13 +118,13 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 	       stateToStr(new_state));
 
 	dqlite_assert(
-	    ERGO(r->state == RAFT_UNAVAILABLE, IN(new_state, RAFT_FOLLOWER)) &&
+	    ERGO(r->state == RAFT_UNAVAILABLE, DQLITE_IN(new_state, RAFT_FOLLOWER)) &&
 	    ERGO(r->state == RAFT_FOLLOWER,
-		 IN(new_state, RAFT_CANDIDATE, RAFT_UNAVAILABLE)) &&
+		 DQLITE_IN(new_state, RAFT_CANDIDATE, RAFT_UNAVAILABLE)) &&
 	    ERGO(r->state == RAFT_CANDIDATE,
-		 IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_LEADER)) &&
+		 DQLITE_IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_LEADER)) &&
 	    ERGO(r->state == RAFT_LEADER,
-		 IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER)));
+		 DQLITE_IN(new_state, RAFT_UNAVAILABLE, RAFT_FOLLOWER)));
 
 	freeRaftState(r);
 

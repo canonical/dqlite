@@ -1,7 +1,11 @@
 #include <sqlite3.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "lib/addr.h"
 #include "lib/assert.h"
@@ -37,6 +41,42 @@ struct connect
 	int fd;
 	int status;
 };
+
+#ifdef _WIN32
+static int ensureWinsock(void)
+{
+	static bool initialized = false;
+	WSADATA data;
+	int rv;
+	if (initialized) {
+		return 0;
+	}
+	rv = WSAStartup(MAKEWORD(2, 2), &data);
+	if (rv != 0) {
+		return RAFT_NOCONNECTION;
+	}
+	initialized = true;
+	return 0;
+}
+#endif
+
+static int socketWrite(int fd, const void *buf, size_t len)
+{
+#ifdef _WIN32
+	return send((SOCKET)fd, buf, len > INT_MAX ? INT_MAX : (int)len, 0);
+#else
+	return (int)write(fd, buf, len);
+#endif
+}
+
+static void socketClose(int fd)
+{
+#ifdef _WIN32
+	closesocket((SOCKET)fd);
+#else
+	close(fd);
+#endif
+}
 
 static int impl_init(struct raft_uv_transport *transport,
 		     raft_id id,
@@ -84,7 +124,7 @@ static void connect_work_cb(uv_work_t *work)
 
 	/* Send the initial dqlite protocol handshake. */
 	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION);
-	rv = (int)write(r->fd, &protocol, sizeof protocol);
+	rv = socketWrite(r->fd, &protocol, sizeof protocol);
 	if (rv != sizeof protocol) {
 		tracef("write failed");
 		rv = RAFT_NOCONNECTION;
@@ -115,7 +155,7 @@ static void connect_work_cb(uv_work_t *work)
 	message__encode(&message, &cursor);
 	request_connect__encode(&request, &cursor);
 
-	rv = (int)write(r->fd, buf, n);
+	rv = socketWrite(r->fd, buf, n);
 	sqlite3_free(buf);
 
 	if (rv != (int)n) {
@@ -128,7 +168,7 @@ static void connect_work_cb(uv_work_t *work)
 	return;
 
 err_after_connect:
-	close(r->fd);
+	socketClose(r->fd);
 err:
 	r->status = rv;
 	return;
@@ -152,7 +192,7 @@ static void connect_after_work_cb(uv_work_t *work, int status)
 	if (rv != 0) {
 		tracef("transport stream failed %d", rv);
 		r->status = RAFT_NOCONNECTION;
-		close(r->fd);
+		socketClose(r->fd);
 		goto out;
 	}
 out:
@@ -214,8 +254,17 @@ int transportDefaultConnect(void *arg, const char *address, int *fd)
 	struct sockaddr_in addr_in;
 	struct sockaddr *addr = (struct sockaddr *)&addr_in;
 	socklen_t addr_len = sizeof addr_in;
+	int type = SOCK_STREAM;
+	uv_os_sock_t socket_fd;
 	int rv;
 	(void)arg;
+
+#ifdef _WIN32
+	rv = ensureWinsock();
+	if (rv != 0) {
+		return rv;
+	}
+#endif
 
 	rv = AddrParse(address, addr, &addr_len, "8080", 0);
 	if (rv != 0) {
@@ -223,16 +272,26 @@ int transportDefaultConnect(void *arg, const char *address, int *fd)
 	}
 
 	dqlite_assert(addr->sa_family == AF_INET || addr->sa_family == AF_INET6);
-	*fd = socket(addr->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (*fd == -1) {
+#ifndef _WIN32
+#ifdef SOCK_CLOEXEC
+	type |= SOCK_CLOEXEC;
+#endif
+#endif
+	socket_fd = socket(addr->sa_family, type, 0);
+	if (socket_fd == (uv_os_sock_t)-1) {
 		return RAFT_NOCONNECTION;
 	}
 
-	rv = connect(*fd, addr, addr_len);
+	rv = connect(socket_fd, addr, addr_len);
 	if (rv == -1) {
-		close(*fd);
+#ifdef _WIN32
+		closesocket(socket_fd);
+#else
+		close(socket_fd);
+#endif
 		return RAFT_NOCONNECTION;
 	}
+	*fd = (int)socket_fd;
 
 	return 0;
 }

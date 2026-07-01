@@ -114,7 +114,7 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
 		}
 
 		struct db *db = req->leader->db;
-		PRE(IN(db->active_leader, NULL, req->leader));
+		PRE(DQLITE_IN(db->active_leader, NULL, req->leader));
 		db->active_leader = req->leader;
 		return exec_tick(req);
 	} else {
@@ -211,7 +211,7 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 
 #define suspend return
 
-void leader_exec(struct leader *leader, 
+void leader_exec(struct leader *leader,
 	struct exec *req,
 	exec_work_cb work,
 	exec_done_cb done)
@@ -228,7 +228,7 @@ void leader_exec(struct leader *leader,
 	queue_init(&req->queue);
 	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
 		EXEC_INITED);
-	
+
 	bool should_suspend = leader->pending > 0;
 	leader->pending++;
 	if (should_suspend) {
@@ -254,7 +254,7 @@ void leader_exec_abort(struct exec *req)
 	case EXEC_DONE: /* already done */
 		return;
 	case EXEC_RUNNING:
-		/* This will abort only if the query is not already done. 
+		/* This will abort only if the query is not already done.
 		 * This will be reset when a new query is executed. */
 		sqlite3_progress_handler(req->leader->conn, 1, progress_abort, NULL);
 		return;
@@ -384,10 +384,10 @@ static bool exec_invariant(const struct sm *sm, int prev)
 		       CHECK(req->status == 0);
 	}
 
-	if (IN(sm_state(sm), EXEC_WAITING_QUEUE, EXEC_RUN_BARRIER, EXEC_RUNNING, EXEC_WAITING_APPLY)) {
+	if (DQLITE_IN(sm_state(sm), EXEC_WAITING_QUEUE, EXEC_RUN_BARRIER, EXEC_RUNNING, EXEC_WAITING_APPLY)) {
 		return CHECK(req->stmt != NULL);
 	}
-	
+
 	return true;
 }
 
@@ -460,14 +460,14 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
 			}
-			
+
 			if (sqlite3_stmt_readonly(req->stmt)) {
 				/* database in in WAL mode, readers can always proceed */
 				sm_move(&req->sm, EXEC_WAITING_QUEUE);
 				continue;
 			}
 
-			if (IN(db->active_leader, NULL, leader)) {
+			if (DQLITE_IN(db->active_leader, NULL, leader)) {
 				db->active_leader = leader;
 				leader_trace(leader, "active leader = %p", (void*)leader);
 				sm_move(&req->sm, EXEC_WAITING_QUEUE);
@@ -567,7 +567,7 @@ static void exec_tick(struct exec *req)
 			}
 			sm_move(&req->sm, EXEC_DONE);
 			continue;
-		case EXEC_DONE: 
+		case EXEC_DONE:
 			sm_fini(&req->sm);
 			req->leader = NULL;
 			req->done_cb(req);
@@ -576,7 +576,7 @@ static void exec_tick(struct exec *req)
 			 * released its memory or reused for another request. */
 			leader->exec = NULL;
 			leader->pending--;
-			
+
 			if (db->active_leader == leader) {
 				if (sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE) {
 					leader_trace(leader, "done");
@@ -585,7 +585,7 @@ static void exec_tick(struct exec *req)
 					leader_trace(leader, "transaction open");
 				}
 			} else {
-				/* It should be impossible to run write transactions without 
+				/* It should be impossible to run write transactions without
 				 * keeping the leader busy. */
 				POST(sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE);
 			}
@@ -597,7 +597,7 @@ static void exec_tick(struct exec *req)
 			}
 
 			if (req != NULL) {
-				PRE(IN(db->active_leader, NULL, req->leader));
+				PRE(DQLITE_IN(db->active_leader, NULL, req->leader));
 				db->active_leader = req->leader;
 				return exec_tick(req);
 			}

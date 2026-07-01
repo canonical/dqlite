@@ -82,10 +82,13 @@ static void uvTcpIncomingCloseCb(struct uv_handle_s *handle)
 static void uvTcpIncomingAbort(struct uvTcpIncoming *incoming)
 {
 	struct UvTcp *t = incoming->t;
+	int rv;
 	/* After uv_close() returns we are guaranteed that no more alloc_cb or
 	 * read_cb will be called. */
 	queue_remove(&incoming->queue);
 	queue_insert_tail(&t->aborting, &incoming->queue);
+	rv = uv_read_stop((struct uv_stream_s *)incoming->tcp);
+	dqlite_assert(rv == 0 || rv == UV_EINVAL);
 	uv_close((struct uv_handle_s *)incoming->tcp, uvTcpIncomingCloseCb);
 }
 
@@ -360,7 +363,8 @@ static bool uvIsAddressDuplication(struct addrinfo *addr_info)
 		return false;
 	}
 	if (addr_info->ai_addrlen != next->ai_addrlen ||
-	    bcmp(addr_info->ai_addr, next->ai_addr, addr_info->ai_addrlen)) {
+	    memcmp(addr_info->ai_addr, next->ai_addr,
+		   (size_t)addr_info->ai_addrlen) != 0) {
 		return false;
 	}
 	return true;

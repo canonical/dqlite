@@ -1,7 +1,7 @@
 /*
  * This implementation stores trace messages in a fixed-size circular buffer
  * that can be dumped via dqlite_print_crash_trace() for debugging purposes.
- *		
+ *
  * IMPORTANT: This circular buffer is NOT resilient to process crashes or
  * failures. The buffer exists only in volatile memory and will be lost if
  * the process terminates abnormally. In theory it is still possible to call
@@ -13,9 +13,13 @@
 #include <stdio.h> /* stderr */
 #include <stdlib.h>
 #include <string.h>      /* strstr, strlen */
-#include <sys/syscall.h> /* syscall */
-#include <sys/types.h>
-#include <unistd.h> /* syscall, getpid */
+#include <time.h>
+#include <uv.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "lib/assert.h"
 #include "lib/byte.h" /* ARRAY_SIZE */
@@ -26,14 +30,14 @@
 
 bool _dqliteTracingEnabled = false;
 static unsigned tracer__level;
-static pid_t tracerPidCached;
+static uint64_t tracerPidCached;
 
 void dqliteTracingMaybeEnable(bool enable)
 {
 	const char *trace_level = getenv(LIBDQLITE_TRACE);
 
 	if (trace_level != NULL) {
-		tracerPidCached = getpid();
+		tracerPidCached = (uint64_t)(unsigned)uv_os_getpid();
 		_dqliteTracingEnabled = enable;
 
 		tracer__level = (unsigned)atoi(trace_level);
@@ -60,14 +64,40 @@ static inline const char *tracerTraceLevelName(unsigned int level)
 	return level < ARRAY_SIZE(levels) ? levels[level] : levels[0];
 }
 
-static pid_t tracerPidCached;
-
-/* NOTE: on i386 and other platforms there're no specifically imported gettid()
-   functions in unistd.h
-*/
-static inline pid_t gettidImpl(void)
+static inline uint64_t gettidImpl(void)
 {
-	return (pid_t)syscall(SYS_gettid);
+	uv_thread_t self = uv_thread_self();
+	uint64_t tid = 0;
+	size_t len = sizeof self < sizeof tid ? sizeof self : sizeof tid;
+	memcpy(&tid, &self, len);
+	return tid;
+}
+
+static inline uint64_t realtimeNs(void)
+{
+	uv_timeval64_t tv;
+	int rv = uv_gettimeofday(&tv);
+	dqlite_assert(rv == 0);
+	return (uint64_t)tv.tv_sec * (uint64_t)1000000000 +
+	       (uint64_t)tv.tv_usec * (uint64_t)1000;
+}
+
+static inline void gmtimePortable(const time_t *time, struct tm *tm)
+{
+#ifdef _WIN32
+	gmtime_s(tm, time);
+#else
+	gmtime_r(time, tm);
+#endif
+}
+
+static inline ssize_t traceWrite(int fd, const void *buf, size_t len)
+{
+#ifdef _WIN32
+	return _write(fd, buf, (unsigned)len);
+#else
+	return write(fd, buf, len);
+#endif
 }
 
 static inline void tracerEmit(const char *file,
@@ -76,12 +106,16 @@ static inline void tracerEmit(const char *file,
 			      unsigned int level,
 			      const char *message)
 {
-	struct timespec ts = { 0 };
+	uv_timeval64_t tv;
+	time_t seconds;
 	struct tm tm;
-	pid_t tid = gettidImpl();
+	uint64_t tid = gettidImpl();
+	int rv;
 
-	clock_gettime(CLOCK_REALTIME, &ts);
-	gmtime_r(&ts.tv_sec, &tm);
+	rv = uv_gettimeofday(&tv);
+	dqlite_assert(rv == 0);
+	seconds = (time_t)tv.tv_sec;
+	gmtimePortable(&seconds, &tm);
 
 	/*
 	  Example:
@@ -91,10 +125,10 @@ static inline void tracerEmit(const char *file,
 	fprintf(stderr,
 		"LIBDQLITE[%6.6u] %04d-%02d-%02dT%02d:%02d:%02d.%09lu "
 		"%6.6u %-7s %-20s %s:%-3i %s\n",
-		tracerPidCached,
+		(unsigned)tracerPidCached,
 
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-		tm.tm_min, tm.tm_sec, (unsigned long)ts.tv_nsec,
+		tm.tm_min, tm.tm_sec, (unsigned long)tv.tv_usec * 1000UL,
 
 		(unsigned)tid, tracerTraceLevelName(level), func,
 		tracerShortFileName(file), line, message);
@@ -146,11 +180,8 @@ void dqlite_crash_trace(const struct trace_def *trace_def,
 {
 	assert(argc <= TRACE_MAX_ARGS);
 
-	pid_t tid = gettidImpl();
-	uint64_t ns = 0;
-	struct timespec ts;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	ns = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+	uint64_t tid = gettidImpl();
+	uint64_t ns = realtimeNs();
 
 	uint32_t id = atomic_fetch_add(&trace_id_generator, 1);
 	uint32_t index = id % DQLITE_MAX_CRASH_TRACE;
@@ -185,7 +216,7 @@ static void char_out(struct trace_buffer *writer, char c)
 		writer->buf[writer->pos] = c;
 		writer->pos++;
 	} else {
-		write(writer->fd, writer->buf, writer->pos);
+		traceWrite(writer->fd, writer->buf, writer->pos);
 		writer->buf[0] = c;
 		writer->pos = 1;
 	}

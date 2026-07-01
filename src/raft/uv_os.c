@@ -2,14 +2,17 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <libgen.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#if HAVE_LINUX_AIO_ABI_H
 #include <sys/eventfd.h>
+#endif
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/vfs.h>
 #include <unistd.h>
+#endif
 #include <uv.h>
 
 #include "../lib/assert.h"
@@ -40,6 +43,10 @@ int UvOsClose(uv_file fd)
 /* Emulate fallocate(). Mostly taken from glibc's implementation. */
 int UvOsFallocateEmulation(int fd, off_t offset, off_t len)
 {
+#ifdef _WIN32
+	(void)offset;
+	return UvOsTruncate(fd, len);
+#else
 	ssize_t increment;
 	struct statfs f;
 	int rv;
@@ -66,10 +73,15 @@ int UvOsFallocateEmulation(int fd, off_t offset, off_t len)
 	}
 
 	return 0;
+#endif
 }
 
 int UvOsFallocate(uv_file fd, off_t offset, off_t len)
 {
+#ifdef _WIN32
+	(void)offset;
+	return UvOsTruncate(fd, len);
+#else
 	int rv;
 retry:
 	rv = posix_fallocate(fd, offset, len);
@@ -81,10 +93,11 @@ retry:
 	 *
 	 *   posix_fallocate() returns zero on success, or an error
 	 *   number on failure.  Note that errno is not set.
-	 *   The negation is here as all UV_XXX errors are just the 
+	 *   The negation is here as all UV_XXX errors are just the
 	 *   negation of whatever POSIX error code is.
 	 */
 	return -rv;
+#endif
 }
 
 int UvOsTruncate(uv_file fd, off_t offset)
@@ -150,6 +163,7 @@ int UvOsJoin(const char *dir, const char *filename, char *path)
 	return 0;
 }
 
+#if HAVE_LINUX_AIO_ABI_H
 int UvOsIoSetup(unsigned nr, aio_context_t *ctxp)
 {
 	int rv;
@@ -212,9 +226,14 @@ int UvOsEventfd(unsigned int initval, int flags)
 	}
 	return rv;
 }
+#endif
 
 int UvOsSetDirectIo(uv_file fd)
 {
+#ifdef _WIN32
+	(void)fd;
+	return UV_ENOTSUP;
+#else
 	int flags; /* Current fcntl flags */
 	int rv;
 	flags = fcntl(fd, F_GETFL);
@@ -223,4 +242,5 @@ int UvOsSetDirectIo(uv_file fd)
 		return -errno;
 	}
 	return 0;
+#endif
 }
