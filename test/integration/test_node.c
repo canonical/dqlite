@@ -20,7 +20,11 @@
  *
  ******************************************************************************/
 
+#ifdef LZ4_AVAILABLE
 static char *bools[] = {"0", "1", NULL};
+#else
+static char *bools[] = {"0", NULL};
+#endif
 
 static MunitParameterEnum node_params[] = {
     {SNAPSHOT_COMPRESSION_PARAM, bools},
@@ -32,6 +36,21 @@ struct fixture
 	char *dir;         /* Data directory. */
 	dqlite_node *node; /* Node instance. */
 };
+
+static const char *testAddress(unsigned id)
+{
+#ifdef _WIN32
+	static char addresses[CLIENT_N][32];
+	munit_assert(id < CLIENT_N);
+	snprintf(addresses[id], sizeof addresses[id], "127.0.0.1:%u", 9100 + id);
+	return addresses[id];
+#else
+	static char addresses[CLIENT_N][16];
+	munit_assert(id < CLIENT_N);
+	snprintf(addresses[id], sizeof addresses[id], "@%u", id);
+	return addresses[id];
+#endif
+}
 
 static void *setUp(const MunitParameter params[], void *user_data, const char *dir, const char *address)
 {
@@ -57,7 +76,7 @@ static void *setUp(const MunitParameter params[], void *user_data, const char *d
 
 static void *setUpLocal(const MunitParameter params[], void *user_data)
 {
-	return setUp(params, user_data, test_dir_setup(), "@123");
+	return setUp(params, user_data, test_dir_setup(), testAddress(1));
 }
 
 static void *setUpInet(const MunitParameter params[], void *user_data)
@@ -84,7 +103,7 @@ static void *setUpForRecovery(const MunitParameter params[], void *user_data)
 	rv = dqlite_node_create(1, "1", f->dir, &f->node);
 	munit_assert_int(rv, ==, 0);
 
-	rv = dqlite_node_set_bind_address(f->node, "@123");
+	rv = dqlite_node_set_bind_address(f->node, testAddress(1));
 	munit_assert_int(rv, ==, 0);
 
 	return f;
@@ -247,7 +266,7 @@ TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
 
 		rv = openDb(&clients[i], f->node, "test");
 		munit_assert_int(rv, ==, RAFT_OK);
-		rv = clientSendQuerySQL(&clients[i], 
+		rv = clientSendQuerySQL(&clients[i],
 			"WITH RECURSIVE inf(i) AS( "
 			"    SELECT 1              "
 			"	UNION ALL              "
@@ -257,7 +276,7 @@ TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
 			NULL, 0, NULL
 		);
 		munit_assert_int(rv, ==, RAFT_OK);
-		
+
 		rv = clientRecvRows(&clients[i], &rows, &done, NULL);
 		munit_assert_int(rv, ==, RAFT_OK);
 		munit_assert_false(done);
@@ -426,7 +445,7 @@ TEST(node, stopInflightWrites, setUpInflight, tearDownInflight, 0, node_params)
 	munit_assert_int(started, ==, 0);
 
 	for (int i = 0; i < CLIENT_N; i++) {
-		rv = clientSendExecSQL(&clients[i], 
+		rv = clientSendExecSQL(&clients[i],
 			"INSERT INTO test_table VALUES (notify_transaction(1))", NULL, 0, NULL);
 		munit_assert_int(rv, ==, RAFT_OK);
 	}
@@ -651,7 +670,7 @@ TEST(node, locked, setUpLocal, tearDown, 0, NULL)
 	rv = dqlite_node_create(2, "2", f->dir, &node2);
 	munit_assert_int(rv, ==, 0);
 
-	rv = dqlite_node_set_bind_address(node2, "@456");
+	rv = dqlite_node_set_bind_address(node2, testAddress(2));
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_start(f->node);

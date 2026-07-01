@@ -1,15 +1,39 @@
+#ifdef _WIN32
+#include "../../src/transport.h"
+#else
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
+#endif
 
 #include "fs.h"
 #include "server.h"
 
+const char *test_server_address(unsigned id)
+{
+#ifdef _WIN32
+	static char addresses[16][64];
+	munit_assert(id < 16);
+	snprintf(addresses[id], sizeof addresses[id], "127.0.0.1:%u", 9000 + id);
+	return addresses[id];
+#else
+	static char addresses[16][64];
+	munit_assert(id < 16);
+	snprintf(addresses[id], sizeof addresses[id], "@%u", id);
+	return addresses[id];
+#endif
+}
+
 
 static int endpointConnect(void *data, const char *address, int *fd)
 {
+	(void)data;
+#ifdef _WIN32
+	return transportDefaultConnect(NULL, address, fd);
+#else
 	struct sockaddr_un addr;
 	int rv;
 	(void)address;
-	(void)data;
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path + 1, address + 1);
@@ -18,6 +42,7 @@ static int endpointConnect(void *data, const char *address, int *fd)
 	rv = connect(*fd, (struct sockaddr *)&addr,
 		     sizeof(sa_family_t) + strlen(address + 1) + 1);
 	return rv;
+#endif
 }
 
 void test_server_setup(struct test_server *s,
@@ -27,7 +52,7 @@ void test_server_setup(struct test_server *s,
 	(void)params;
 
 	s->id = id;
-	sprintf(s->address, "@%u", id);
+	snprintf(s->address, sizeof s->address, "%s", test_server_address(id));
 
 	s->dir = test_dir_setup();
 	s->role_management = false;
@@ -126,7 +151,9 @@ void test_server_run(struct test_server *s)
 	int rv;
 
 	rv = dqlite_node_start(s->dqlite);
-	munit_assert_int(rv, ==, 0);
+	if (rv != 0) {
+		munit_errorf("dqlite_node_start(): %s", dqlite_node_errmsg(s->dqlite));
+	}
 
 	test_server_client_connect(s, &s->client);
 }

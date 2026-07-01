@@ -18,10 +18,10 @@
 
 #include "test/lib/munit.h"
 
-#ifdef DQLITE_STATIC_LIBC
+#if defined(DQLITE_STATIC_LIBC) || defined(_WIN32)
 
 /* Trickery to cause tests that use getaddrinfo result injection to be skipped
- * when building with WITH_STATIC_DEPS. */
+ * when building with WITH_STATIC_DEPS or on Windows. */
 #define ADDRINFO_TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
     TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
     { \
@@ -30,12 +30,12 @@
     static MUNIT_UNUSED MunitResult test_unused_##S##_##C( \
         MUNIT_UNUSED const MunitParameter params[], MUNIT_UNUSED void *data)
 
-#else /* ifndef DQLITE_STATIC_LIBC */
+#else /* ifndef DQLITE_STATIC_LIBC && !_WIN32 */
 
 #define ADDRINFO_TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
     TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)
 
-#endif /* ifdef DQLITE_STATIC_LIBC ... else */
+#endif /* ifdef DQLITE_STATIC_LIBC || _WIN32 ... else */
 
 #define SET_UP_ADDRINFO AddrinfoInjectSetUp(params)
 #define TEAR_DOWN_ADDRINFO AddrinfoInjectTearDown()

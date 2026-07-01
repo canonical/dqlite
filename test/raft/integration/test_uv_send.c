@@ -320,7 +320,7 @@ TEST(send, reconnectAfterWriteError, setUp, tearDown, 0, NULL)
     int socket;
     SEND(0);
     socket = TcpServerAccept(&f->server);
-    close(socket);
+    TcpServerCloseAccepted(socket);
     SEND_FAILURE(0, RAFT_IOERR, "");
     SEND(0);
     return MUNIT_OK;
@@ -333,10 +333,12 @@ TEST(send, reconnectAfterMultipleWriteErrors, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     int socket;
+#ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
+#endif
     SEND(0);
     socket = TcpServerAccept(&f->server);
-    close(socket);
+    TcpServerCloseAccepted(socket);
     SEND_SUBMIT(1 /* message */, 0 /* rv */, RAFT_IOERR /* status */);
     SEND_SUBMIT(2 /* message */, 0 /* rv */, RAFT_IOERR /* status */);
     SEND_WAIT(1);

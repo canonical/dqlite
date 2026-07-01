@@ -90,7 +90,7 @@ static void tear_down(void *data)
  ******************************************************************************/
 
 /* Allocate a libuv buffer with the given amount of bytes. */
-#define BUF_ALLOC(N) {munit_malloc(N), N};
+#define BUF_ALLOC(N) uv_buf_init(munit_malloc(N), N)
 
 /* Start reading into the current buffer */
 #define READ(BUF)                                                   \

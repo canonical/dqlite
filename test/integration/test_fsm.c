@@ -50,7 +50,11 @@
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
+#ifdef LZ4_AVAILABLE
 static char *bools[] = {"0", "1", NULL};
+#else
+static char *bools[] = {"0", NULL};
+#endif
 
 /* Make sure the snapshots scheduled by raft don't interfere with the snapshots
  * scheduled by the tests. */
