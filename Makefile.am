@@ -304,6 +304,7 @@ if RAFT_IO_LINUX_KAIO
 raft_uv_unit_test_SOURCES += src/raft/uv_writer_linux_kaio.c
 endif
 raft_uv_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
+raft_uv_unit_test_LDFLAGS = $(static)
 raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS)
 
 # The integration/uv test is not linked to libraft, but built
@@ -337,12 +338,14 @@ raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS)
 if LZ4_AVAILABLE
 libdqlite_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 libdqlite_la_LDFLAGS += $(LZ4_LIBS)
-integration_test_CFLAGS += -DLZ4_AVAILABLE
+integration_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 raft_core_unit_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 raft_core_unit_test_LDFLAGS = $(static) $(LZ4_LIBS)
 libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 libraft_la_LDFLAGS += $(LZ4_LIBS)
-raft_uv_integration_test_CFLAGS += -DLZ4_AVAILABLE
+raft_uv_unit_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
+raft_uv_unit_test_LDFLAGS += $(LZ4_LIBS)
+raft_uv_integration_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 raft_uv_integration_test_LDFLAGS += $(LZ4_LIBS)
 endif
 
