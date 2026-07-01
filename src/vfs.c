@@ -1209,6 +1209,9 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 	 * See vfsWalFileRead.
 	 */
 	uint32_t page_size;
+	sqlite3_int64 frame_size;
+	sqlite3_int64 frame_start;
+	sqlite3_int64 frame_offset;
 	unsigned index;
 	struct vfsFrame *frame;
 
@@ -1226,6 +1229,12 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 	 * ever change the WAL and this routine is that writer. */
 	page_size = vfsWalGetPageSize(&f->database->wal);
 	dqlite_assert(page_size > 0);
+	frame_size = (sqlite3_int64)FORMAT__WAL_FRAME_HDR_SIZE + page_size;
+	frame_offset = (offset - VFS__WAL_HEADER_SIZE) % frame_size;
+	if (offset < VFS__WAL_HEADER_SIZE || frame_offset < 0 ||
+	    frame_offset + amount > frame_size) {
+		return SQLITE_IOERR_WRITE;
+	}
 
 	/* It is expected that once committed the WAL cannot be changed.
 	 * As such, its index must be above the already committed part */
@@ -1241,8 +1250,8 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 		 * one page after the end. */
 		unsigned new_n_tx = f->database->wal.n_tx + 1;
 		dqlite_assert(tx_index == new_n_tx);
-		/* Also, new frames always start by writing the header first */
-		dqlite_assert(amount == FORMAT__WAL_FRAME_HDR_SIZE);
+		/* Also, new frames always start at the frame boundary. */
+		dqlite_assert(frame_offset == 0);
 
 		frame = vfsFrameCreate(page_size);
 		if (frame == NULL) {
@@ -1261,20 +1270,25 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 	frame = f->database->wal.tx[tx_index - 1];
 	dqlite_assert(frame != NULL);
 
-	/* This is a WAL frame write. We expect either a frame
-	 * header or page write. */
-	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
-		/* Frame header write. */
-		dqlite_assert(((offset - VFS__WAL_HEADER_SIZE) %
-			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		memcpy(frame->header, buf, FORMAT__WAL_FRAME_HDR_SIZE);
-	} else {
-		/* Frame page write. */
-		dqlite_assert(amount == (int)page_size);
-		dqlite_assert(((offset - VFS__WAL_HEADER_SIZE -
-			 FORMAT__WAL_FRAME_HDR_SIZE) %
-			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		memcpy(frame->page, buf, (size_t)amount);
+	/* SQLite may write a frame as header, page, full-frame, or smaller
+	 * contiguous chunks depending on platform and VFS flags. */
+	frame_start = 0;
+	if (frame_offset < FORMAT__WAL_FRAME_HDR_SIZE) {
+		sqlite3_int64 header_amount = FORMAT__WAL_FRAME_HDR_SIZE - frame_offset;
+		if (header_amount > amount) {
+			header_amount = amount;
+		}
+		memcpy(frame->header + frame_offset, buf, (size_t)header_amount);
+		frame_start = header_amount;
+	}
+	if (frame_start < amount) {
+		sqlite3_int64 page_offset = frame_offset + frame_start -
+			FORMAT__WAL_FRAME_HDR_SIZE;
+		sqlite3_int64 page_amount = amount - frame_start;
+		dqlite_assert(page_offset >= 0);
+		dqlite_assert(page_offset + page_amount <= page_size);
+		memcpy(frame->page + page_offset, (const char *)buf + frame_start,
+		       (size_t)page_amount);
 	}
 
 	return SQLITE_OK;
@@ -2972,11 +2986,8 @@ static int vfsAuthorizer(void *pUserData, int action, const char *third, const c
 	return SQLITE_OK;
 }
 
-static int vfsOpenHook(sqlite3 *db,
-		       char **pzErrMsg,
-		       const struct sqlite3_api_routines *pThunk)
+static int vfsConfigureConnection(sqlite3 *db, char **pzErrMsg)
 {
-	(void)pThunk;
 	sqlite3_file *file = NULL;
 	int rv = sqlite3_file_control(db, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
 	dqlite_assert(rv == SQLITE_OK);
@@ -3042,12 +3053,31 @@ static int vfsOpenHook(sqlite3 *db,
 	return SQLITE_OK;
 }
 
+int VfsConfigureConnection(sqlite3 *db)
+{
+	return vfsConfigureConnection(db, NULL);
+}
+
+#if !(defined(__APPLE__) && defined(__MACH__))
+static int vfsOpenHook(sqlite3 *db,
+			  char **pzErrMsg,
+			  const struct sqlite3_api_routines *pThunk)
+{
+	(void)pThunk;
+	return vfsConfigureConnection(db, pzErrMsg);
+}
+#endif
+
 int VfsInit(struct sqlite3_vfs *vfs, const struct vfsConfig *config)
 {
 	tracef("vfs init");
 
+	/* Apple deprecates process-global SQLite auto extensions. Internal dqlite
+	 * connections call VfsConfigureConnection() explicitly on that platform. */
+#if !(defined(__APPLE__) && defined(__MACH__))
 	int rv = sqlite3_auto_extension((void(*)(void))vfsOpenHook);
 	dqlite_assert(rv == SQLITE_OK);
+#endif
 
 	vfs->iVersion = 2;
 	vfs->mxPathname = VFS__MAX_PATHNAME;

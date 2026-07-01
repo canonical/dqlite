@@ -15,6 +15,11 @@ struct vfsConfig {
  * implementation. */
 int VfsInit(struct sqlite3_vfs *vfs, const struct vfsConfig *config);
 
+/* Configure a SQLite connection opened with dqlite's VFS. This is normally
+ * called by SQLite's auto-extension hook, except on platforms where global
+ * auto extensions are deprecated. */
+int VfsConfigureConnection(sqlite3 *db);
+
 /* Register a function that will be called immediately before a database is
  * deleted. The callback is passed two arguments:
  *  - the data provided in this method;

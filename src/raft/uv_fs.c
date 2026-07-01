@@ -8,7 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
+#if defined(__APPLE__) && defined(__MACH__)
+#include <sys/mount.h>
+#else
 #include <sys/vfs.h>
+#endif
 #include <unistd.h>
 #endif
 #include <time.h>
