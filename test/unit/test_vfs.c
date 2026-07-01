@@ -1211,6 +1211,9 @@ TEST(VfsShmLock, releaseUnix, setUp, tearDown, 0, NULL)
 {
 	(void)data;
 	struct sqlite3_vfs *vfs = sqlite3_vfs_find("unix");
+	if (vfs == NULL) {
+		return MUNIT_SKIP;
+	}
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 	int flags =
 	    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
@@ -1594,7 +1597,7 @@ TEST(VfsIntegration, sqlite, setUp, tearDown, 0, NULL)
 	(void)params;
 
 	const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE;
-	
+
 	char filename[] = "/tmp/dqlite-test-normal-sqlite-XXXXXX";
 	int fd = mkstemp(filename);
 	munit_assert_int(fd, >, 0);

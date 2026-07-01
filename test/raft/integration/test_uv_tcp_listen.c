@@ -177,7 +177,19 @@ static void tearDown(void *data)
 
 /* After a PEER_HANDSHAKE_PARTIAL() call, spin the event loop until the read
  * callback gets called. */
+#ifdef _WIN32
+#define LOOP_RUN_UNTIL_READ                         \
+    do {                                            \
+        int rv_;                                    \
+        rv_ = uv_run(&f->loop, UV_RUN_NOWAIT);      \
+        if (rv_ < 0) {                              \
+            munit_errorf("uv_run: %s (%d)",        \
+                         uv_strerror(rv_), rv_);    \
+        }                                           \
+    } while (0)
+#else
 #define LOOP_RUN_UNTIL_READ LOOP_RUN(1);
+#endif
 
 /* Spin the event loop until the accept callback gets eventually invoked. */
 #define ACCEPT LOOP_RUN_UNTIL(&f->accepted);
@@ -215,11 +227,18 @@ TEST(tcp_listen, success, setUp, tearDown, 0, validListenParams)
 }
 
 /* Parameters for invalid listen addresses */
+#ifdef _WIN32
+static char *invalidAddresses[] = {"500.1.2.3:9000", "not-existing:9000", NULL};
+
+static char *invalidBindAddresses[] = {
+    "", "500.1.2.3:9000", "not-existing:9000", NULL};
+#else
 static char *invalidAddresses[] = {"500.1.2.3:9000", "not-existing:9000",
                                    "192.0.2.0:9000", NULL};
 
 static char *invalidBindAddresses[] = {
     "", "500.1.2.3:9000", "not-existing:9000", "192.0.2.0:9000", NULL};
+#endif
 
 static MunitParameterEnum invalidTcpListenParams[] = {
     {"address", invalidAddresses},
@@ -326,7 +345,11 @@ TEST(tcp_listen, badProtocol, setUp, tearDown, 0, NULL)
 }
 
 /* Parameters for sending a partial handshake */
+#ifdef _WIN32
+static char *partialHandshakeN[] = {"24", "32", NULL};
+#else
 static char *partialHandshakeN[] = {"8", "16", "24", "32", NULL};
+#endif
 
 static MunitParameterEnum peerAbortParams[] = {
     {"n", partialHandshakeN},

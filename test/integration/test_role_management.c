@@ -107,13 +107,13 @@ TEST(role_management, promote, setUp, tearDown, 0, role_management_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
-	const char *address = "@2";
+	const char *address = test_server_address(2);
 	int tries;
 
 	HANDSHAKE;
 
 	id = 2;
-	address = "@2";
+	address = test_server_address(2);
 	ADD(id, address);
 	for (tries = 0; tries < TRIES && !hasRole(f, 2, DQLITE_VOTER);
 	     tries += 1) {
@@ -124,7 +124,7 @@ TEST(role_management, promote, setUp, tearDown, 0, role_management_params)
 	};
 
 	id = 3;
-	address = "@3";
+	address = test_server_address(3);
 	ADD(id, address);
 	for (tries = 0; tries < TRIES && !hasRole(f, 3, DQLITE_VOTER);
 	     tries += 1) {
@@ -135,7 +135,7 @@ TEST(role_management, promote, setUp, tearDown, 0, role_management_params)
 	};
 
 	id = 4;
-	address = "@4";
+	address = test_server_address(4);
 	ADD(id, address);
 	for (tries = 0; tries < TRIES && !hasRole(f, 4, DQLITE_STANDBY);
 	     tries += 1) {
@@ -146,7 +146,7 @@ TEST(role_management, promote, setUp, tearDown, 0, role_management_params)
 	};
 
 	id = 5;
-	address = "@5";
+	address = test_server_address(5);
 	ADD(id, address);
 	for (tries = 0; tries < TRIES && !hasRole(f, 5, DQLITE_STANDBY);
 	     tries += 1) {

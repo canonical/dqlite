@@ -141,6 +141,11 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 	(void)params;
 	(void)user_data;
 
+	rc = sqlite3_shutdown();
+	if (rc != SQLITE_OK) {
+		munit_errorf("sqlite_shutdown(): %s", sqlite3_errstr(rc));
+	}
+
 	/* Install the faulty malloc implementation */
 	rc = sqlite3_config(SQLITE_CONFIG_GETMALLOC, &mem);
 	if (rc != SQLITE_OK) {

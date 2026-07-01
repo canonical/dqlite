@@ -106,6 +106,56 @@ extern int _main_suites_n;
 	 * provide a global `SIGABRT` hook that will also print a trace in    \
 	 * case an assert is triggered by another library (libuv, liblz4,     \
 	 * libsqlite3) and provide useful diagnostics there as well. */       \
+	__attribute__((noreturn)) void dqlite_fail(                          \
+		const char *__assertion, const char *__file,                    \
+			 unsigned int __line, const char *__function)         \
+	{                                                                     \
+		(void)__assertion;                                             \
+		(void)__file;                                                  \
+		(void)__line;                                                  \
+		(void)__function;                                              \
+		PRINT_BACKTRACE(1);                                            \
+		abort();                                                       \
+	}                                                                     \
+	                                                                      \
+	static void print_backtrace(int sig)                                  \
+	{                                                                     \
+		(void)sig;                                                    \
+		/* Prevent recursive printing of backtrace in case printing   \
+		 * raises a signal (because of a bug?) */                     \
+		static bool printing = false;                                 \
+		if (!printing) {                                              \
+			printing = true;                                      \
+			PRINT_BACKTRACE(3);                                   \
+			printing = false;                                     \
+		}                                                             \
+	}                                                                     \
+	                                                                      \
+	MunitSuite _main_suites[SUITE__CAP];                                  \
+	int _main_suites_n = 0;                                               \
+	                                                                      \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])               \
+	{                                                                     \
+		(void)argc;                                                   \
+		(void)argv;                                                   \
+		/* SIGPIPE is not available on Windows. */                    \
+		if (0) {                                                      \
+			signal(SIGABRT, print_backtrace);                     \
+		}                                                             \
+		dqliteTracingMaybeEnable(true);                               \
+		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
+	}
+
+/* Define the top-level suites array and the main() function of the test. */
+#ifndef _WIN32
+#undef RUNNER
+#define RUNNER(NAME)                                                          \
+	/* This overrides the weak symbol defined in assert.h and will remove \
+	 * any diagnostic printed by dqlite by default. This way tests can    \
+	 * provide a global `SIGABRT` hook that will also print a trace in    \
+	 * case an assert is triggered by another library (libuv, liblz4,     \
+	 * libsqlite3) and provide useful diagnostics there as well. */       \
 	void dqlite_fail(const char *__assertion, const char *__file,         \
 			 unsigned int __line, const char *__function)         \
 	{                                                                     \
@@ -136,6 +186,7 @@ extern int _main_suites_n;
 		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
 		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
 	}
+#endif
 
 /* Declare and register a new test suite #S belonging to the file's test module.
  *

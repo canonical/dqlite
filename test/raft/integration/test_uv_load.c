@@ -1736,10 +1736,15 @@ TEST(load, openSegmentWithNoAccessPermission, setUp, tearDown, 0, NULL)
 
     /* Skip the test when running as root, since EACCES would not be triggered
      * in that case. */
+#ifdef _WIN32
+    SETUP_UV;
+    return MUNIT_SKIP;
+#else
     if (getuid() == 0) {
         SETUP_UV; /* Setup the uv object since teardown expects it. */
         return MUNIT_SKIP;
     }
+#endif
 
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);

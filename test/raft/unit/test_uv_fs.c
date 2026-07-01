@@ -1,5 +1,5 @@
-#include <sys/utsname.h>
 #include <unistd.h>
+#include <uv.h>
 
 #include "../../../src/raft/uv_fs.h"
 #include "../../../src/raft/uv_os.h"
@@ -35,10 +35,15 @@
 
 static bool kernel_version_above_equal(const char *min)
 {
-    struct utsname kernel_info;
-    int rv = uname(&kernel_info);
+#ifdef _WIN32
+    (void)min;
+    return false;
+#else
+    uv_utsname_t kernel_info;
+    int rv = uv_os_uname(&kernel_info);
     munit_assert_int(rv, ==, 0);
     return strverscmp(kernel_info.release, min) >= 0;
+#endif
 }
 
 SUITE(UvFsCheckDir)
@@ -66,6 +71,9 @@ TEST(UvFsCheckDir, doesNotExist, DirSetUp, DirTearDown, 0, NULL)
 /* If the process can't access the directory, an error is returned. */
 TEST(UvFsCheckDir, permissionDenied, NULL, NULL, 0, NULL)
 {
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     bool has_access = DirHasFile("/proc/1", "root");
     /* Skip the test is the process actually has access to /proc/1/root. */
     if (has_access) {
@@ -74,14 +82,19 @@ TEST(UvFsCheckDir, permissionDenied, NULL, NULL, 0, NULL)
     CHECK_DIR_ERROR("/proc/1/root", RAFT_UNAUTHORIZED,
                     "can't access directory '/proc/1/root'");
     return MUNIT_OK;
+#endif
 }
 
 /* If the given path contains a non-directory prefix, an error is returned. */
 TEST(UvFsCheckDir, notDirPrefix, NULL, NULL, 0, NULL)
 {
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     CHECK_DIR_ERROR("/dev/null/foo", RAFT_INVALID,
                     "path '/dev/null/foo' is not a directory");
     return MUNIT_OK;
+#endif
 }
 
 /* If the given path is not a directory, an error is returned. */
@@ -95,12 +108,16 @@ TEST(UvFsCheckDir, notDir, NULL, NULL, 0, NULL)
 /* If the given directory is not writable, an error is returned. */
 TEST(UvFsCheckDir, notWritable, DirSetUp, DirTearDown, 0, NULL)
 {
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     const char *dir = data;
     char errmsg[RAFT_ERRMSG_BUF_SIZE];
     sprintf(errmsg, "directory '%s' is not writable", dir);
     DirMakeUnwritable(dir);
     CHECK_DIR_ERROR(dir, RAFT_INVALID, errmsg);
     return MUNIT_OK;
+#endif
 }
 
 /******************************************************************************
@@ -362,9 +379,13 @@ TEST(UvFsProbeCapabilities, noAccess, DirSetUp, DirTearDown, 0, NULL)
 
     /* Skip the test when running as root, since EACCES would not be triggered
      * in that case. */
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     if (getuid() == 0) {
         return MUNIT_SKIP;
     }
+#endif
 
     DirMakeUnexecutable(dir);
     PROBE_CAPABILITIES_ERROR(

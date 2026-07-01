@@ -11,8 +11,6 @@
 #include "../../src/lib/byte.h"
 #include "../../src/vfs.h"
 
-#include <sys/mman.h>
-
 SUITE(vfs_extra);
 
 #define N_VFS 2
@@ -933,7 +931,7 @@ TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, NULL)
 	DONE(tx);
 
 	CHECKPOINT(conn);
-	
+
 	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
 	munit_assert(rv == SQLITE_OK);
 	CLOSE(conn);
@@ -985,7 +983,7 @@ TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, 
 	DONE(tx);
 
 	CHECKPOINT(db2);
-	
+
 	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
 	munit_assert(rv == SQLITE_OK);
 	CLOSE(db1);

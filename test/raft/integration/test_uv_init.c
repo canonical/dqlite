@@ -4,8 +4,16 @@
 #include "../../lib/runner.h"
 #include "../lib/uv.h"
 
+#ifdef HAVE_LINUX_MAGIC_H
 #include <linux/magic.h>
+#endif
+#ifndef _WIN32
 #include <sys/vfs.h>
+#endif
+
+#ifndef TMPFS_MAGIC
+#define TMPFS_MAGIC 0x01021994
+#endif
 
 #define BAD_FORMAT 3
 #define BAD_FORMAT_STR "3"
@@ -137,6 +145,9 @@ TEST(init, dirTooLong, setUp, tearDown, 0, NULL)
 /* Out of memory conditions upon probing for direct I/O. */
 TEST(init, probeDirectIoOom, setUp, tearDown, 0, NULL)
 {
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     struct fixture *f = data;
     /* XXX: tmpfs seems to not support O_DIRECT */
     struct statfs info;
@@ -154,11 +165,15 @@ TEST(init, probeDirectIoOom, setUp, tearDown, 0, NULL)
     HEAP_FAULT_ENABLE;
     INIT_ERROR(f->dir, RAFT_NOMEM, "probe Direct I/O: out of memory");
     return 0;
+#endif
 }
 
 /* Out of memory conditions upon probing for async I/O. */
 TEST(init, probeAsyncIoOom, setUp, tearDown, 0, NULL)
 {
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     struct fixture *f = data;
     /* XXX: tmpfs seems to not support O_DIRECT */
     struct statfs info;
@@ -176,6 +191,7 @@ TEST(init, probeAsyncIoOom, setUp, tearDown, 0, NULL)
     HEAP_FAULT_ENABLE;
     INIT_ERROR(f->dir, RAFT_NOMEM, "probe Async I/O: out of memory");
     return 0;
+#endif
 }
 
 /* The given directory does not exist. */
@@ -190,12 +206,16 @@ TEST(init, dirDoesNotExist, setUp, tearDown, 0, NULL)
 /* The given directory not accessible */
 TEST(init, dirNotAccessible, setUp, tearDown, 0, NULL)
 {
+#ifdef _WIN32
+    return MUNIT_SKIP;
+#else
     struct fixture *f = data;
     char errmsg[RAFT_ERRMSG_BUF_SIZE];
     sprintf(errmsg, "directory '%s' is not writable", f->dir);
     DirMakeUnexecutable(f->dir);
     INIT_ERROR(f->dir, RAFT_INVALID, errmsg);
     return MUNIT_OK;
+#endif
 }
 
 /* No space is left for probing I/O capabilities. */

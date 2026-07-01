@@ -3,8 +3,13 @@
 #ifndef TEST_ENDPOINT_H
 #define TEST_ENDPOINT_H
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <sys/un.h>
+#endif
 
 #include "munit.h"
 
@@ -26,11 +31,13 @@ extern char *test_endpoint_family_values[];
 struct test_endpoint
 {
 	char address[256];  /* Rendered address string. */
-	sa_family_t family; /* Address family (either AF_INET or AF_UNIX) */
+	int family;         /* Address family (either AF_INET or AF_UNIX) */
 	int fd;             /* Listening socket. */
 	union {             /* Server  address (either a TCP or Unix) */
 		struct sockaddr_in in_address;
+#ifndef _WIN32
 		struct sockaddr_un un_address;
+#endif
 	};
 };
 
