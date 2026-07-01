@@ -29,6 +29,18 @@ if SANITIZE_ENABLED
 AM_CFLAGS += -fsanitize=address
 endif
 
+if VFS_SHM_LINUX_REMAP
+AM_CFLAGS += -DDQLITE_VFS_SHM_LINUX_REMAP
+endif
+
+if VFS_SHM_PORTABLE
+AM_CFLAGS += -DDQLITE_VFS_SHM_PORTABLE
+endif
+
+if RAFT_IO_LINUX_KAIO
+AM_CFLAGS += -DDQLITE_RAFT_IO_LINUX_KAIO
+endif
+
 include_HEADERS = include/dqlite.h
 
 basic_dqlite_sources = \
@@ -46,6 +58,7 @@ basic_dqlite_sources = \
   src/lib/assert.c \
   src/lib/addr.c \
   src/lib/buffer.c \
+  src/lib/page_size.c \
   src/lib/sm.c \
   src/lib/threadpool.c \
   src/lib/transport.c \
@@ -120,7 +133,12 @@ libraft_la_SOURCES = \
   src/raft/uv_timer.c \
   src/raft/uv_truncate.c \
   src/raft/uv_work.c \
-  src/raft/uv_writer.c
+  src/raft/uv_writer.c \
+  src/raft/uv_writer_libuv.c
+
+if RAFT_IO_LINUX_KAIO
+libraft_la_SOURCES += src/raft/uv_writer_linux_kaio.c
+endif
 
 libdqlite_la_SOURCES += $(libraft_la_SOURCES)
 
@@ -277,10 +295,14 @@ raft_uv_unit_test_SOURCES = \
   src/raft/uv_fs.c \
   src/raft/uv_os.c \
   src/raft/uv_writer.c \
+  src/raft/uv_writer_libuv.c \
   test/raft/unit/main_uv.c \
   test/raft/unit/test_uv_fs.c \
   test/raft/unit/test_uv_os.c \
   test/raft/unit/test_uv_writer.c
+if RAFT_IO_LINUX_KAIO
+raft_uv_unit_test_SOURCES += src/raft/uv_writer_linux_kaio.c
+endif
 raft_uv_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS)
 
@@ -315,6 +337,7 @@ raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS)
 if LZ4_AVAILABLE
 libdqlite_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 libdqlite_la_LDFLAGS += $(LZ4_LIBS)
+integration_test_CFLAGS += -DLZ4_AVAILABLE
 raft_core_unit_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 raft_core_unit_test_LDFLAGS = $(static) $(LZ4_LIBS)
 libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
