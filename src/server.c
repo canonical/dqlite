@@ -1,11 +1,25 @@
 #include "server.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <sched.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <io.h>
+#include <share.h>
+#else
 #include <sys/file.h>
+#endif
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <ws2tcpip.h>
+#else
 #include <sys/un.h>
+#endif
 #include <time.h>
+#include <unistd.h>
 #include <uv.h>
 
 #include "../include/dqlite.h"
@@ -32,6 +46,148 @@
 #define DATABASE_DIR_FMT "%s/database"
 
 #define NODE_STORE_INFO_FORMAT_V1 "v1"
+
+#ifndef _WIN32
+static void closeSocket(uv_os_sock_t socket)
+{
+	close(socket);
+}
+#endif
+
+#ifdef _WIN32
+static int ensureWinsock(void)
+{
+	static bool initialized = false;
+	WSADATA data;
+	int rv;
+	if (initialized) {
+		return 0;
+	}
+	rv = WSAStartup(MAKEWORD(2, 2), &data);
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+	initialized = true;
+	return 0;
+}
+#endif
+
+#ifdef _WIN32
+static int serverPathJoin(const char *dir,
+			  const char *name,
+			  char *path,
+			  size_t path_size)
+{
+	int rv = snprintf(path, path_size, "%s/%s", dir, name);
+	if (rv < 0 || (size_t)rv >= path_size) {
+		return DQLITE_ERROR;
+	}
+	return 0;
+}
+#endif
+
+static int serverOpenDir(struct dqlite_server *server)
+{
+#ifdef _WIN32
+	(void)server;
+	return 0;
+#else
+	server->dir_fd = open(server->dir_path, O_RDONLY | O_DIRECTORY);
+	return server->dir_fd < 0 ? DQLITE_ERROR : 0;
+#endif
+}
+
+static void serverCloseDir(struct dqlite_server *server)
+{
+#ifdef _WIN32
+	(void)server;
+#else
+	if (server->dir_fd >= 0) {
+		close(server->dir_fd);
+		server->dir_fd = -1;
+	}
+#endif
+}
+
+static int serverOpenFile(struct dqlite_server *server,
+			  const char *name,
+			  int flags,
+			  int mode)
+{
+#ifdef _WIN32
+	char path[PATH_MAX];
+	int rv = serverPathJoin(server->dir_path, name, path, sizeof path);
+	if (rv != 0) {
+		return -1;
+	}
+	return _open(path, flags | _O_BINARY, mode);
+#else
+	return openat(server->dir_fd, name, flags, mode);
+#endif
+}
+
+static int serverRenameFile(struct dqlite_server *server,
+			    const char *old_name,
+			    const char *new_name)
+{
+#ifdef _WIN32
+	char old_path[PATH_MAX];
+	char new_path[PATH_MAX];
+	int rv = serverPathJoin(server->dir_path, old_name, old_path, sizeof old_path);
+	if (rv != 0) {
+		return -1;
+	}
+	rv = serverPathJoin(server->dir_path, new_name, new_path, sizeof new_path);
+	if (rv != 0) {
+		return -1;
+	}
+	remove(new_path);
+	return rename(old_path, new_path);
+#else
+	return renameat(server->dir_fd, old_name, server->dir_fd, new_name);
+#endif
+}
+
+static ssize_t serverReadFileAt(int fd, void *buf, size_t size)
+{
+#ifdef _WIN32
+	if (_lseek(fd, 0, SEEK_SET) < 0) {
+		return -1;
+	}
+	return _read(fd, buf, (unsigned)size);
+#else
+	return pread(fd, buf, size, 0);
+#endif
+}
+
+static void serverCloseFile(int fd)
+{
+	if (fd < 0) {
+		return;
+	}
+#ifdef _WIN32
+	_close(fd);
+#else
+	close(fd);
+#endif
+}
+
+static FILE *serverFdopen(int fd, const char *mode)
+{
+#ifdef _WIN32
+	char binary_mode[4];
+	size_t len = strlen(mode);
+	if (len >= sizeof binary_mode - 1) {
+		return NULL;
+	}
+	memcpy(binary_mode, mode, len);
+	binary_mode[len] = 'b';
+	binary_mode[len + 1] = '\0';
+	return _fdopen(fd, binary_mode);
+#else
+	return fdopen(fd, mode);
+#endif
+}
 
 /* Called by raft every time the raft state changes. */
 static void state_cb(struct raft *r,
@@ -126,32 +282,26 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_max_catch_up_rounds(&d->raft, 100);
 	raft_set_max_catch_up_round_duration(&d->raft, 50 * 1000); /* 50 secs */
 	raft_register_state_cb(&d->raft, state_cb);
-	rv = sem_init(&d->ready, 0, 0);
+	rv = uv_sem_init(&d->ready, 0);
 	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
-			 strerror(errno));
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "uv_sem_init(): %s",
+			 uv_strerror(rv));
 		rv = DQLITE_ERROR;
 		goto err_after_raft_fsm_init;
 	}
-	rv = sem_init(&d->stopped, 0, 0);
+	rv = uv_sem_init(&d->handover_done, 0);
 	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
-			 strerror(errno));
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "uv_sem_init(): %s",
+			 uv_strerror(rv));
 		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
-	}
-	rv = sem_init(&d->handover_done, 0, 0);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
-			 strerror(errno));
-		rv = DQLITE_ERROR;
-		goto err_after_stopped_init;
 	}
 
 	queue_init(&d->queue);
 	queue_init(&d->conns);
 	queue_init(&d->roles_changes);
 	d->raft_state = RAFT_UNAVAILABLE;
+	d->thread_result = 0;
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
@@ -161,11 +311,8 @@ int dqlite__init(struct dqlite_node *d,
 
 	d->initialized = true;
 	return 0;
-
-err_after_stopped_init:
-	sem_destroy(&d->stopped);
 err_after_ready_init:
-	sem_destroy(&d->ready);
+	uv_sem_destroy(&d->ready);
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
@@ -184,17 +331,12 @@ err:
 
 void dqlite__close(struct dqlite_node *d)
 {
-	int rv;
 	if (!d->initialized) {
 		return;
 	}
 	raft_free(d->listener);
-	rv = sem_destroy(&d->stopped);
-	dqlite_assert(rv == 0); /* Fails only if sem object is not valid */
-	rv = sem_destroy(&d->ready);
-	dqlite_assert(rv == 0); /* Fails only if sem object is not valid */
-	rv = sem_destroy(&d->handover_done);
-	dqlite_assert(rv == 0);
+	uv_sem_destroy(&d->ready);
+	uv_sem_destroy(&d->handover_done);
 	fsm__close(&d->raft_fsm);
 	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
 	// the TODO above referencing the cleanup logic without running the
@@ -225,17 +367,32 @@ int dqlite_node_create(dqlite_node_id id,
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
+#ifdef _WIN32
+	struct sockaddr_storage addr_storage;
+	struct sockaddr *addr = (struct sockaddr *)&addr_storage;
+	socklen_t addr_len = sizeof addr_storage;
+#else
 	/* sockaddr_un is large enough for our purposes */
 	struct sockaddr_un addr_un;
 	struct sockaddr *addr = (struct sockaddr *)&addr_un;
 	socklen_t addr_len = sizeof(addr_un);
-	sa_family_t domain;
-	size_t path_len;
-	int fd;
+#endif
+	int domain;
 	int rv;
+#ifndef _WIN32
+	int type = SOCK_STREAM;
+	uv_os_sock_t fd;
+#endif
 	if (t->running) {
 		return DQLITE_MISUSE;
 	}
+
+#ifdef _WIN32
+	rv = ensureWinsock();
+	if (rv != 0) {
+		return rv;
+	}
+#endif
 
 	rv =
 	    AddrParse(address, addr, &addr_len, "8080", DQLITE_ADDR_PARSE_UNIX);
@@ -244,53 +401,72 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 	domain = addr->sa_family;
 
-	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (fd == -1) {
-		return DQLITE_ERROR;
-	}
-
 	if (domain == AF_INET || domain == AF_INET6) {
-		int reuse = 1;
-		rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-				(const char *)&reuse, sizeof(reuse));
+		struct uv_tcp_s *tcp = raft_malloc(sizeof *tcp);
+		if (tcp == NULL) {
+			return DQLITE_NOMEM;
+		}
+		rv = uv_tcp_init(&t->loop, tcp);
 		if (rv != 0) {
-			close(fd);
+			raft_free(tcp);
 			return DQLITE_ERROR;
 		}
+		rv = uv_tcp_bind(tcp, addr, 0);
+		if (rv != 0) {
+			uv_close((struct uv_handle_s *)tcp, NULL);
+			uv_run(&t->loop, UV_RUN_DEFAULT);
+			raft_free(tcp);
+			return DQLITE_ERROR;
+		}
+		t->listener = (struct uv_stream_s *)tcp;
+
+		int sz = ((int)strlen(address)) + 1; /* Room for '\0' */
+		t->bind_address = sqlite3_malloc(sz);
+		if (t->bind_address == NULL) {
+			uv_close((struct uv_handle_s *)t->listener, NULL);
+			uv_run(&t->loop, UV_RUN_DEFAULT);
+			t->listener = NULL;
+			return DQLITE_NOMEM;
+		}
+		strcpy(t->bind_address, address);
+		return 0;
+	}
+
+#ifdef _WIN32
+	return DQLITE_MISUSE;
+#else
+#ifdef SOCK_CLOEXEC
+	type |= SOCK_CLOEXEC;
+#endif
+	fd = socket(domain, type, 0);
+	if (fd == (uv_os_sock_t)-1) {
+		return DQLITE_ERROR;
 	}
 
 	rv = bind(fd, addr, addr_len);
 	if (rv != 0) {
-		close(fd);
+		closeSocket(fd);
 		return DQLITE_ERROR;
 	}
 
-	rv = transport__stream(&t->loop, fd, &t->listener);
-	if (rv != 0) {
-		close(fd);
-		return DQLITE_ERROR;
-	}
-
-	if (domain == AF_INET || domain == AF_INET6) {
-		int sz = ((int)strlen(address)) + 1; /* Room for '\0' */
-		t->bind_address = sqlite3_malloc(sz);
-		if (t->bind_address == NULL) {
-			close(fd);
-			return DQLITE_NOMEM;
+	{
+		rv = transport__stream(&t->loop, (int)fd, &t->listener);
+		if (rv != 0) {
+			closeSocket(fd);
+			return DQLITE_ERROR;
 		}
-		strcpy(t->bind_address, address);
-	} else {
+		size_t path_len;
 		path_len = sizeof addr_un.sun_path;
 		t->bind_address = sqlite3_malloc((int)path_len);
 		if (t->bind_address == NULL) {
-			close(fd);
+			closeSocket(fd);
 			return DQLITE_NOMEM;
 		}
 		memset(t->bind_address, 0, path_len);
 		rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener,
 					 t->bind_address, &path_len);
 		if (rv != 0) {
-			close(fd);
+			closeSocket(fd);
 			sqlite3_free(t->bind_address);
 			t->bind_address = NULL;
 			return DQLITE_ERROR;
@@ -299,6 +475,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 
 	return 0;
+#endif
 }
 
 const char *dqlite_node_get_bind_address(dqlite_node *t)
@@ -489,7 +666,7 @@ static void destroy_conn(struct conn *conn)
 static void handoverDoneCb(struct dqlite_node *d, int status)
 {
 	d->handover_status = status;
-	sem_post(&d->handover_done);
+	uv_sem_post(&d->handover_done);
 }
 
 static void handoverCb(uv_async_t *handover)
@@ -545,10 +722,8 @@ static void stopCb(uv_async_t *stop)
 static void startup_cb(uv_timer_t *startup)
 {
 	struct dqlite_node *d = startup->data;
-	int rv;
 	d->running = true;
-	rv = sem_post(&d->ready);
-	dqlite_assert(rv == 0); /* No reason for which posting should fail */
+	uv_sem_post(&d->ready);
 }
 
 static void listenCb(uv_stream_t *listener, int status)
@@ -597,6 +772,9 @@ static void listenCb(uv_stream_t *listener, int status)
 
 	/* We accept unix socket connections only from the same process. */
 	if (listener->type == UV_NAMED_PIPE) {
+#ifdef _WIN32
+		goto err;
+#else
 		int fd = stream->io_watcher.fd;
 #if defined(SO_PEERCRED)  // Linux
 		struct ucred cred;
@@ -622,6 +800,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		// The unix socket connection can't be verified and from
 		// security perspective it's better to block it entirely
 		goto err;
+#endif
 #endif
 	}
 
@@ -699,7 +878,7 @@ static int taskRun(struct dqlite_node *d)
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_start(): %s",
 			 raft_errmsg(&d->raft));
 		/* Unblock any client of taskReady */
-		sem_post(&d->ready);
+		uv_sem_post(&d->ready);
 		return rv;
 	}
 
@@ -707,8 +886,7 @@ static int taskRun(struct dqlite_node *d)
 	dqlite_assert(rv == 0);
 
 	/* Unblock any client of taskReady */
-	rv = sem_post(&d->ready);
-	dqlite_assert(rv == 0); /* no reason for which posting should fail */
+	uv_sem_post(&d->ready);
 
 	return 0;
 }
@@ -762,16 +940,10 @@ const char *dqlite_node_errmsg(dqlite_node *n)
 	return "node is NULL";
 }
 
-static void *taskStart(void *arg)
+static void taskStart(void *arg)
 {
 	struct dqlite_node *t = arg;
-	int rv;
-	rv = taskRun(t);
-	if (rv != 0) {
-		uintptr_t result = (uintptr_t)rv;
-		return (void *)result;
-	}
-	return NULL;
+	t->thread_result = taskRun(t);
 }
 
 void dqlite_node_destroy(dqlite_node *d)
@@ -790,7 +962,7 @@ void dqlite_node_destroy(dqlite_node *d)
 static bool taskReady(struct dqlite_node *d)
 {
 	/* Wait for the ready semaphore */
-	sem_wait(&d->ready);
+	uv_sem_wait(&d->ready);
 	return d->running;
 }
 
@@ -803,21 +975,45 @@ static int acquire_dir(const char *dir, int *fd_out)
 	int rv;
 
 	snprintf(path, sizeof(path), "%s/%s", dir, LOCK_FILENAME);
+	(void)rv;
+#ifdef _WIN32
+	fd = _open(path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	if (fd < 0) {
+		return DQLITE_ERROR;
+	}
+	HANDLE handle = (HANDLE)_get_osfhandle(fd);
+	OVERLAPPED overlapped = {0};
+	if (!LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+			0, 1, 0, &overlapped)) {
+		serverCloseFile(fd);
+		return DQLITE_ERROR;
+	}
+#else
 	fd = open(path, O_RDWR|O_CREAT|O_CLOEXEC, S_IRUSR|S_IWUSR);
 	if (fd < 0) {
 		return DQLITE_ERROR;
 	}
 	rv = flock(fd, LOCK_EX|LOCK_NB);
 	if (rv != 0) {
+		serverCloseFile(fd);
 		return DQLITE_ERROR;
 	}
+#endif
 	*fd_out = fd;
 	return 0;
 }
 
 static void release_dir(int fd)
 {
-	close(fd);
+	if (fd < 0) {
+		return;
+	}
+#ifdef _WIN32
+	HANDLE handle = (HANDLE)_get_osfhandle(fd);
+	OVERLAPPED overlapped = {0};
+	UnlockFileEx(handle, 0, 1, 0, &overlapped);
+#endif
+	serverCloseFile(fd);
 }
 
 int dqlite_node_start(dqlite_node *t)
@@ -842,9 +1038,9 @@ int dqlite_node_start(dqlite_node *t)
 		goto err_after_acquire_dir;
 	}
 
-	rv = pthread_create(&t->thread, 0, &taskStart, t);
+	rv = uv_thread_create(&t->thread, taskStart, t);
 	if (rv != 0) {
-		tracef("pthread create failed %d", rv);
+		tracef("uv thread create failed %d", rv);
 		rv = DQLITE_ERROR;
 		goto err_after_acquire_dir;
 	}
@@ -874,7 +1070,7 @@ int dqlite_node_handover(dqlite_node *d)
 	rv = uv_async_send(&d->handover);
 	dqlite_assert(rv == 0);
 
-	sem_wait(&d->handover_done);
+	uv_sem_wait(&d->handover_done);
 
 	return d->handover_status;
 }
@@ -882,7 +1078,6 @@ int dqlite_node_handover(dqlite_node *d)
 int dqlite_node_stop(dqlite_node *d)
 {
 	tracef("dqlite node stop");
-	void *result;
 	int rv;
 
 	if (!d->running) {
@@ -897,13 +1092,13 @@ int dqlite_node_stop(dqlite_node *d)
 	rv = uv_async_send(&d->stop);
 	dqlite_assert(rv == 0);
 
-	rv = pthread_join(d->thread, &result);
+	rv = uv_thread_join(&d->thread);
 	dqlite_assert(rv == 0);
 
 	release_dir(d->lock_fd);
 	d->lock_fd = -EBADF;
 
-	return (int)((uintptr_t)result);
+	return d->thread_result;
 }
 
 int dqlite_node_recover(dqlite_node *n,
@@ -1195,14 +1390,14 @@ static void writeNodeStore(struct dqlite_server *server)
 	const char *role_name;
 	int rv;
 
-	store_fd = openat(server->dir_fd, "node-store-tmp",
-			  O_RDWR | O_CREAT | O_TRUNC, 0644);
+	store_fd = serverOpenFile(server, "node-store-tmp",
+			       O_RDWR | O_CREAT | O_TRUNC, 0644);
 	if (store_fd < 0) {
 		return;
 	}
-	f = fdopen(store_fd, "w+");
+	f = serverFdopen(store_fd, "w+");
 	if (f == NULL) {
-		close(store_fd);
+		serverCloseFile(store_fd);
 		return;
 	}
 
@@ -1228,8 +1423,7 @@ static void writeNodeStore(struct dqlite_server *server)
 	}
 
 	fclose(f);
-	rv = renameat(server->dir_fd, "node-store-tmp", server->dir_fd,
-		      "node-store");
+	rv = serverRenameFile(server, "node-store-tmp", "node-store");
 	(void)rv;
 }
 
@@ -1303,14 +1497,14 @@ static int writeLocalInfo(struct dqlite_server *server)
 	ssize_t k;
 	int rv;
 
-	info_fd = openat(server->dir_fd, "server-info-tmp",
-			 O_RDWR | O_CREAT | O_TRUNC, 0664);
+	info_fd = serverOpenFile(server, "server-info-tmp",
+			    O_RDWR | O_CREAT | O_TRUNC, 0664);
 	if (info_fd < 0) {
 		return 1;
 	}
-	f = fdopen(info_fd, "w+");
+	f = serverFdopen(info_fd, "w+");
 	if (f == NULL) {
-		close(info_fd);
+		serverCloseFile(info_fd);
 		return 1;
 	}
 	k = fprintf(f, "%s\n%s\n%" PRIu64 "\n", NODE_STORE_INFO_FORMAT_V1,
@@ -1319,13 +1513,13 @@ static int writeLocalInfo(struct dqlite_server *server)
 		fclose(f);
 		return 1;
 	}
-	rv = renameat(server->dir_fd, "server-info-tmp", server->dir_fd,
-		      "server-info");
-	if (rv != 0) {
-		fclose(f);
+	if (fclose(f) != 0) {
 		return 1;
 	}
-	fclose(f);
+	rv = serverRenameFile(server, "server-info-tmp", "server-info");
+	if (rv != 0) {
+		return 1;
+	}
 	return 0;
 }
 
@@ -1334,9 +1528,9 @@ int dqlite_server_create(const char *path, dqlite_server **server)
 	int rv;
 
 	*server = callocChecked(1, sizeof **server);
-	rv = pthread_cond_init(&(*server)->cond, NULL);
+	rv = uv_cond_init(&(*server)->cond);
 	dqlite_assert(rv == 0);
-	rv = pthread_mutex_init(&(*server)->mutex, NULL);
+	rv = uv_mutex_init(&(*server)->mutex);
 	dqlite_assert(rv == 0);
 	(*server)->dir_path = strdupChecked(path);
 	(*server)->connect = transportDefaultConnect;
@@ -1572,39 +1766,27 @@ static int bootstrapOrJoinCluster(struct dqlite_server *server,
 	return 0;
 }
 
-static void *refreshTask(void *arg)
+static void refreshTask(void *arg)
 {
 	struct dqlite_server *server = arg;
 	struct client_context context;
-	struct timespec ts;
-	unsigned long long nsec;
+	uint64_t timeout_nsec;
 	int rv;
 
-	rv = pthread_mutex_lock(&server->mutex);
-	dqlite_assert(rv == 0);
+	uv_mutex_lock(&server->mutex);
+	timeout_nsec = server->refresh_period * 1000 * 1000;
 	for (;;) {
-		rv = clock_gettime(CLOCK_REALTIME, &ts);
-		dqlite_assert(rv == 0);
-		nsec = (unsigned long long)ts.tv_nsec;
-		nsec += server->refresh_period * 1000 * 1000;
-		while (nsec > 1000 * 1000 * 1000) {
-			nsec -= 1000 * 1000 * 1000;
-			ts.tv_sec += 1;
-		}
-		/* The type of tv_nsec is "an implementation-defined signed type
-		 * capable of holding [the range 0..=999,999,999]". int is the
-		 * narrowest such type (on all the targets we care about), so
-		 * cast to that before doing the assignment to avoid warnings.
-		 */
-		ts.tv_nsec = (int)nsec;
-
-		rv = pthread_cond_timedwait(&server->cond, &server->mutex, &ts);
 		if (server->shutdown) {
-			rv = pthread_mutex_unlock(&server->mutex);
-			dqlite_assert(rv == 0);
+			uv_mutex_unlock(&server->mutex);
 			break;
 		}
-		dqlite_assert(rv == 0 || rv == ETIMEDOUT);
+		rv = uv_cond_timedwait(&server->cond, &server->mutex,
+					       timeout_nsec);
+		if (server->shutdown) {
+			uv_mutex_unlock(&server->mutex);
+			break;
+		}
+		dqlite_assert(rv == 0 || rv == UV_ETIMEDOUT);
 
 		clientContextMillis(&context, 5000);
 		if (server->proto.fd == -1) {
@@ -1623,13 +1805,12 @@ static void *refreshTask(void *arg)
 		}
 		writeNodeStore(server);
 	}
-	return NULL;
 }
 
 int dqlite_server_start(dqlite_server *server)
 {
-	int info_fd;
-	int store_fd;
+	int info_fd = -1;
+	int store_fd = -1;
 	off_t full_size;
 	ssize_t size;
 	char *buf;
@@ -1651,15 +1832,15 @@ int dqlite_server_start(dqlite_server *server)
 	}
 
 	server->is_new = true;
-	server->dir_fd = open(server->dir_path, O_RDONLY | O_DIRECTORY);
-	if (server->dir_fd < 0) {
+	rv = serverOpenDir(server);
+	if (rv != 0) {
 		goto err;
 	}
-	info_fd = openat(server->dir_fd, "server-info", O_RDWR | O_CREAT, 0664);
+	info_fd = serverOpenFile(server, "server-info", O_RDWR | O_CREAT, 0664);
 	if (info_fd < 0) {
 		goto err_after_open_dir;
 	}
-	store_fd = openat(server->dir_fd, "node-store", O_RDWR | O_CREAT, 0664);
+	store_fd = serverOpenFile(server, "node-store", O_RDWR | O_CREAT, 0664);
 	if (store_fd < 0) {
 		goto err_after_open_info;
 	}
@@ -1674,7 +1855,7 @@ int dqlite_server_start(dqlite_server *server)
 		server->is_new = false;
 		/* TODO mmap it? */
 		buf = mallocChecked((size_t)size);
-		n_read = pread(info_fd, buf, (size_t)size, 0);
+		n_read = serverReadFileAt(info_fd, buf, (size_t)size);
 		if (n_read < size) {
 			free(buf);
 			goto err_after_open_store;
@@ -1702,7 +1883,7 @@ int dqlite_server_start(dqlite_server *server)
 
 		/* TODO mmap it? */
 		buf = mallocChecked((size_t)size);
-		n_read = pread(store_fd, buf, (size_t)size, 0);
+		n_read = serverReadFileAt(store_fd, buf, (size_t)size);
 		if (n_read < size) {
 			free(buf);
 			goto err_after_open_store;
@@ -1714,6 +1895,11 @@ int dqlite_server_start(dqlite_server *server)
 			goto err_after_open_store;
 		}
 	}
+
+	serverCloseFile(store_fd);
+	store_fd = -1;
+	serverCloseFile(info_fd);
+	info_fd = -1;
 
 	if (server->is_new) {
 		server->local_id =
@@ -1757,11 +1943,11 @@ int dqlite_server_start(dqlite_server *server)
 		goto err_after_start_node;
 	}
 
-	rv = pthread_create(&server->refresh_thread, NULL, refreshTask, server);
+	rv = uv_thread_create(&server->refresh_thread, refreshTask, server);
 	dqlite_assert(rv == 0);
 
-	close(store_fd);
-	close(info_fd);
+	serverCloseFile(store_fd);
+	serverCloseFile(info_fd);
 	server->started = true;
 	return 0;
 
@@ -1771,12 +1957,11 @@ err_after_create_node:
 	dqlite_node_destroy(server->local);
 	server->local = NULL;
 err_after_open_store:
-	close(store_fd);
+	serverCloseFile(store_fd);
 err_after_open_info:
-	close(info_fd);
+	serverCloseFile(info_fd);
 err_after_open_dir:
-	close(server->dir_fd);
-	server->dir_fd = -1;
+	serverCloseDir(server);
 err:
 	return 1;
 }
@@ -1797,21 +1982,17 @@ int dqlite_server_handover(dqlite_server *server)
 
 int dqlite_server_stop(dqlite_server *server)
 {
-	void *ret;
 	int rv;
 
 	if (!server->started) {
 		return 1;
 	}
 
-	rv = pthread_mutex_lock(&server->mutex);
-	dqlite_assert(rv == 0);
+	uv_mutex_lock(&server->mutex);
 	server->shutdown = true;
-	rv = pthread_mutex_unlock(&server->mutex);
-	dqlite_assert(rv == 0);
-	rv = pthread_cond_signal(&server->cond);
-	dqlite_assert(rv == 0);
-	rv = pthread_join(server->refresh_thread, &ret);
+	uv_mutex_unlock(&server->mutex);
+	uv_cond_signal(&server->cond);
+	rv = uv_thread_join(&server->refresh_thread);
 	dqlite_assert(rv == 0);
 
 	emptyCache(&server->cache);
@@ -1823,13 +2004,15 @@ int dqlite_server_stop(dqlite_server *server)
 	if (rv != 0) {
 		return 1;
 	}
+	dqlite_node_destroy(server->local);
+	server->local = NULL;
 	return 0;
 }
 
 void dqlite_server_destroy(dqlite_server *server)
 {
-	pthread_cond_destroy(&server->cond);
-	pthread_mutex_destroy(&server->mutex);
+	uv_cond_destroy(&server->cond);
+	uv_mutex_destroy(&server->mutex);
 
 	emptyCache(&server->cache);
 
@@ -1839,6 +2022,6 @@ void dqlite_server_destroy(dqlite_server *server)
 	}
 	free(server->local_addr);
 	free(server->bind_addr);
-	close(server->dir_fd);
+	serverCloseDir(server);
 	free(server);
 }
