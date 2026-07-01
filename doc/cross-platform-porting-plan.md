@@ -1,7 +1,7 @@
 # Cross-platform porting plan
 
 This document describes the work needed to make dqlite portable across Linux,
-Windows, and Android, while preserving the current Linux behavior as an
+Windows, macOS, and Android, while preserving the current Linux behavior as an
 optimized backend.
 
 The primary goal for the `cross-portable` branch should be correctness and
@@ -20,8 +20,8 @@ onto portable or capability-gated implementations:
   uses `uv_fs_write`/`uv_fs_close`, while an optional Linux-only KAIO backend can
   be selected for optimized Linux builds.
 - The custom SQLite VFS has two explicit shared-memory providers: the Linux
-  remap provider and the heap-backed portable provider used by Windows and
-  Android builds.
+  remap provider and the heap-backed portable provider used by Windows, macOS,
+  and Android builds.
 - The server lifecycle now uses `uv_thread_t`, `uv_sem_t`, `uv_mutex_t`, and
   `uv_cond_t`. Persistent-state helpers still use POSIX file APIs on Unix, but
   Windows has corresponding path/open/read/rename/lock wrappers.
@@ -30,9 +30,9 @@ onto portable or capability-gated implementations:
   `RWF_NOWAIT`.
 - The client protocol still exposes a blocking file-descriptor-like API, but it
   now has Windows wrappers around `select`, `recv`, `send`, and `closesocket`.
-- The test suite has been progressively gated or adapted for Windows/Android
-  assumptions such as abstract sockets, chmod/statvfs behavior, TCP read event
-  granularity, and WinSock socket handles.
+- The test suite has been progressively gated or adapted for Windows, macOS,
+  and Android assumptions such as abstract sockets, chmod/statvfs behavior, TCP
+  reset timing, resolver interposition, and WinSock socket handles.
 
 The recommended strategy is to introduce explicit portability boundaries:
 
@@ -43,7 +43,7 @@ The recommended strategy is to introduce explicit portability boundaries:
 3. A small platform layer for synchronization, filesystem state, local IPC,
    sockets, randomness, time, sorting, and tracing.
 4. Capability-based tests and CI jobs for Linux optimized, Linux portable,
-   Windows, and Android cross-builds.
+   Windows, macOS, and Android cross-builds.
 
 ## Portability status by area
 
@@ -52,14 +52,14 @@ The recommended strategy is to introduce explicit portability boundaries:
 | Build gates | `configure.ac` supports `--with-vfs-shm=auto|linux-remap|portable`; non-Linux targets can select portable mode without a hard `RWF_NOWAIT` requirement. | Keep Linux-only checks tied to Linux-only backends and add CI coverage for each supported target. |
 | Raft disk writes | `src/raft/uv_writer.c` dispatches to a backend. `src/raft/uv_writer_libuv.c` is the portable default, and `src/raft/uv_writer_linux_kaio.c` is an optional Linux-only optimized backend selected with `--with-raft-io=linux-kaio` or `--with-raft-io=auto` on Linux when KAIO prerequisites are available. Linux KAIO types are not exposed in `src/raft/uv_writer.h`. | Benchmark the LibUV and KAIO backends on Linux workloads and decide whether the default should remain portable or move to auto/KAIO for Linux production builds. |
 | Filesystem probing | `src/raft/uv_fs.c` still probes Linux capabilities. The portable writer does not depend on KAIO/direct I/O; the KAIO backend consumes the async/direct capability flags when selected. | Make capability reporting explicitly backend-specific to avoid confusing unused Linux capability results on portable targets. |
-| VFS shared memory | `src/vfs.c` has Linux remap and portable heap-backed providers. Portable mode uses LibUV time/random/sleep helpers and `uv_mutex_t`; Android armv7 alignment is handled by the two-word local version stamp. | Continue performance work for the portable heap provider and preserve Linux remap as the optimized Linux default. |
+| VFS shared memory | `src/vfs.c` has Linux remap and portable heap-backed providers. Portable mode uses LibUV time/random/sleep helpers and `uv_mutex_t`; Android armv7 alignment is handled by the two-word local version stamp. Apple builds configure the dqlite VFS hook per connection because process-global SQLite auto extensions are deprecated and disabled on Apple platforms. | Continue performance work for the portable heap provider and preserve Linux remap as the optimized Linux default. |
 | Server lifecycle | `src/server.h` uses `uv_thread_t`, `uv_sem_t`, `uv_cond_t`, and `uv_mutex_t`; the refresh thread uses `uv_cond_timedwait`. | Consider replacing the refresh thread with a LibUV timer for a simpler long-term design. |
 | Server sockets | TCP bind now uses LibUV for TCP addresses; Unix-domain sockets and peer credential checks remain Unix-only. | Add explicit address schemes and implement Windows named-pipe local IPC if local IPC beyond TCP loopback is required. |
 | Client protocol | `src/client/protocol.c` has platform wrappers for readiness/read/write/close: POSIX uses `poll`/`read`/`write`/`close`, Windows uses `select`/`recv`/`send`/`closesocket`. | A dedicated blocking stream abstraction would make the public boundary clearer, but current Windows role-management tests pass. |
 | Persistent state | `src/server.c` has helper wrappers for open/read/rename/fdopen/close and uses `LockFileEx` on Windows; Unix still uses `openat`, `renameat`, `pread`, and `flock`. | A consolidated filesystem/path abstraction would reduce conditional code and improve path handling, but the current helpers are sufficient for validated Windows builds. |
 | Sorting | `src/roles.c` uses native GNU/BSD `qsort_r` where available and a deterministic fallback where it is not. | No immediate blocker; keep fallback limited to small role-management arrays. |
 | Random/time/tracing | Common paths now use LibUV helpers such as `uv_random`, `uv_sleep`, `uv_gettimeofday`, and platform-neutral thread-id handling. | Continue avoiding direct POSIX time/random APIs in newly portable code. |
-| Tests | Windows/Wine and Android cross-compile validation are documented below; several Unix/Linux-only tests are skipped or gated on non-Unix targets. | Add automated CI jobs and emulator/device smoke tests for Android runtime coverage. |
+| Tests | Windows/Wine, native macOS, and Android cross-compile validation are documented below; several Unix/Linux-only tests are skipped or gated on non-Unix targets. | Add automated CI jobs and emulator/device smoke tests for Android runtime coverage. |
 
 ## PR #747, the pre-747 model, and the portable provider
 
@@ -333,41 +333,46 @@ time for the mixed and write-heavy scenarios. This supports keeping the LibUV
 writer as the default portable backend while retaining KAIO as an explicit Linux
 optimization option that should be selected based on workload benchmarks.
 
-#### Portable backend benchmark: Linux versus Windows/Wine
+#### Portable backend benchmark: Linux versus Windows/Wine versus macOS
 
-The same benchmark was also run with the Windows portable build under Wine, using
-the MinGW/Conan dependency workspace and the same `libuv/1.51.0` plus
-`sqlite3/3.53.3` dependency versions. This compares the Linux portable backend
-against the Windows portable backend at the same branch state:
+The same benchmark was also run with the Windows portable build under Wine and
+with a native macOS portable build. This compares the Linux portable backend
+against the Windows and macOS portable backends at the same branch state:
 
 - Linux portable build:
   `./configure --with-vfs-shm=portable --with-raft-io=portable`
 - Windows portable build:
   see `README_WINDOWS.md` for the MinGW/Conan setup and configure command.
+- macOS portable build:
+  `./configure --with-vfs-shm=portable --with-raft-io=portable`, using native
+  Homebrew dependencies as described in `README_MACOS.md`.
 - Benchmark binary: `integration-test.exe` on Windows/Wine and
-  `integration-test` on Linux.
+  `integration-test` on Linux and macOS.
 - Benchmark test: `stress/read_write`.
 - Seed: `0x5eed1234`.
 - Warmup: one unrecorded iteration per platform and scenario.
 - Measured iterations: `10`.
-- The same `$bench_root` layout can be used for the Linux and Windows/Wine logs.
+- The same `$bench_root` layout can be used for the Linux, Windows/Wine, and
+  macOS logs.
 
-The Linux benchmark used `--no-fork`. The Windows test binary used for this
-validation did not accept that option, so the Windows command omitted it. CPU
-time reported by the Windows/Wine run was not comparable with the Linux run, so
-the table below compares wall-clock time only.
+The Linux and macOS benchmarks used `--no-fork`. The Windows test binary used
+for this validation did not accept that option, so the Windows command omitted
+it. CPU time reported by the Windows/Wine run was not comparable with the Linux
+or macOS runs, so the table below compares wall-clock time only.
 
-| Scenario | Linux portable wall | Windows/Wine portable wall | Wall delta |
-| --- | ---: | ---: | ---: |
-| `writers=0 readers=16 databases=1` | 6.71949480s | 25.02570840s | +272.43% |
-| `writers=1 readers=4 databases=1` | 8.03535353s | 8.93448470s | +11.19% |
-| `writers=4 readers=0 databases=1` | 28.66580590s | 9.71652050s | -66.10% |
+| Scenario | Linux portable wall | Windows/Wine portable wall | Windows delta | macOS portable wall | macOS delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `writers=0 readers=16 databases=1` | 6.71949480s | 25.02570840s | +272.43% | 8.73973800s | +30.07% |
+| `writers=1 readers=4 databases=1` | 8.03535353s | 8.93448470s | +11.19% | 2.56766500s | -68.05% |
+| `writers=4 readers=0 databases=1` | 28.66580590s | 9.71652050s | -66.10% | 8.39178000s | -70.73% |
 
-In this table, the delta is Windows/Wine relative to Linux portable. Windows was
+In this table, deltas are relative to Linux portable. Windows/Wine was
 significantly slower in the read-heavy scenario, roughly comparable in the mixed
 scenario, and faster in the write-heavy scenario in this Wine-hosted validation
-run. These numbers should be treated as Wine validation data rather than native
-Windows performance numbers.
+run. macOS was slower in the read-heavy scenario, but faster in the mixed and
+write-heavy scenarios in the native Apple Silicon validation run. These numbers
+should be treated as cross-platform validation data rather than direct hardware
+or native Windows performance rankings.
 
 The remaining follow-up optimizations are:
 
@@ -677,7 +682,8 @@ Linux; no Linux AIO headers are required for portable mode.
 
 Status: implemented. The default writer is LibUV-backed and portable. The
 optional Linux KAIO writer builds with `--with-raft-io=linux-kaio` and passes
-Linux `make check`. Windows and Android builds stay on the portable backend.
+Linux `make check`. Windows, macOS, and Android builds stay on the portable
+backend.
 
 ### M3: Portable heap-backed VFS
 
@@ -692,8 +698,9 @@ Linux `make check`. Windows and Android builds stay on the portable backend.
 Exit criteria: unit and integration VFS tests pass in Linux portable mode
 without `memfd_create`, `mmap`, or `mremap` in common code.
 
-Status: implemented and validated on Linux, Windows, and Android cross-builds.
-The Linux remap provider remains available as the optimized Linux path.
+Status: implemented and validated on Linux, Windows, native macOS, and Android
+cross-builds. The Linux remap provider remains available as the optimized Linux
+path.
 
 ### M4: Server filesystem and client stream portability
 
@@ -736,7 +743,21 @@ TCP loopback smoke test.
 Status: exceeded with the current MinGW/Wine path. MSVC and CMake are not part
 of the current implementation.
 
-### M7: Android cross-build
+### M7: macOS native build
+
+- Build on Darwin with the portable VFS provider and portable LibUV Raft writer.
+- Keep Apple SQLite auto-extension behavior explicit per connection.
+- Gate Darwin-specific TCP reset timing, resolver interposition, and filesystem
+  API differences in tests.
+- Run the native portable unit, integration, Raft UV, and Raft fuzzy tests.
+
+Exit criteria: macOS builds libdqlite and runs the portable unit/integration
+test suite with only intentional platform skips.
+
+Status: native macOS validation passed with a full `make check` run: 7/7 test
+programs passing, with no program-level skips, failures, or errors.
+
+### M8: Android cross-build
 
 - Use an Android NDK toolchain for cross-compilation.
 - Build portable backends only.
@@ -749,7 +770,7 @@ smoke tests.
 Status: cross-build validated for Android arm64-v8a and armeabi-v7a at API 24.
 No Android emulator/device runtime tests have been added to this repository yet.
 
-### M8: Optional performance follow-up
+### M9: Optional performance follow-up
 
 - Benchmark portable LibUV writer against the optional KAIO backend and LibUV
   io_uring-enabled Linux.
@@ -775,6 +796,21 @@ test set listed below under Wine:
 
 The same branch also passes native Linux `make check`: 7/7 test programs
 passing.
+
+Native macOS validation uses the portable VFS provider and portable LibUV Raft
+writer and passes a full native `make check` run: 7/7 test programs passing,
+with no program-level skips, failures, or errors. Additional per-binary details
+recorded for the platform-specific areas are:
+
+- `integration-test`: 170/170 passing, 4 skipped.
+- `raft-uv-unit-test`: 24/24 passing, 57 skipped.
+- `raft-uv-integration-test`: 220/220 passing, 22 skipped.
+- `raft-core-fuzzy-test`: 57/57 passing.
+
+macOS-specific fixes covered Apple SQLite auto-extension behavior, Darwin TCP
+reset timing, disabled resolver interposition tests for Darwin libuv dylibs,
+`accept4` absence, `posix_fallocate` absence, BSD `qsort_r`, and Darwin-safe
+backtrace handling.
 
 The optional Linux KAIO Raft writer backend is selected with
 `--with-raft-io=linux-kaio`. It is compiled only on Linux with the required AIO
@@ -840,8 +876,9 @@ cross-compilation.
   current cross-thread path becomes hard to maintain.
 5. Consolidate filesystem/path helpers if the current local wrappers in
   `src/server.c` become too scattered.
-6. Add first-class CI/build scripts for Windows and Android; CMake remains an
-  optional future build-system improvement, not part of the current refactor.
+6. Add first-class CI/build scripts for Windows, macOS, and Android; CMake
+  remains an optional future build-system improvement, not part of the current
+  refactor.
 
 ## Known limitations and risks
 
@@ -851,6 +888,7 @@ cross-compilation.
 | Portable writer weakens durability ordering. | Raft log corruption or committed-entry loss after crash. | Keep writes serialized first; add crash/restart tests; require fsync/fdatasync after metadata-sensitive operations. |
 | Windows file locking semantics differ from `flock`. | Multiple nodes may use same directory. | Implement lock-file abstraction and test double-open behavior on each platform. |
 | Client protocol remains fd-like internally. | The current wrappers pass Windows role-management tests, but future local IPC or non-socket transports may need clearer ownership and blocking semantics. | Keep the existing wrappers tested and introduce a dedicated blocking stream abstraction before adding new transport kinds. |
+| macOS validation is native but not yet automated in CI. | Darwin regressions around Apple SQLite hooks, TCP reset timing, or filesystem APIs could return unnoticed. | Add a macOS CI job that runs the same portable test binaries and documents intentional platform skips. |
 | Android cross-build works but runtime paths fail in app sandbox. | Host cross-compilation can pass while emulator/device startup fails due to filesystem, tmpdir, or networking restrictions. | Use `uv_os_tmpdir` or caller-provided data dirs; add emulator/device smoke tests for storage, VFS, and TCP loopback. |
 
 ## Validation gaps
@@ -858,8 +896,8 @@ cross-compilation.
 The current validation scope is documented above. The main validation gaps for
 future work are:
 
-- Automate the Linux, Linux KAIO, Windows/Wine, and Android cross-build checks
-  in CI.
+- Automate the Linux, Linux KAIO, Windows/Wine, macOS, and Android cross-build
+  checks in CI.
 - Add Android emulator or device smoke tests for Raft storage, VFS, and TCP
   loopback.
 - Add native Windows runner coverage if suitable CI capacity is available.
