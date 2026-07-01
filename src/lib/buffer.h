@@ -12,7 +12,7 @@
 #ifndef LIB_BUFFER_H_
 #define LIB_BUFFER_H_
 
-#include <unistd.h>
+#include <stddef.h>
 
 #include "../../include/dqlite.h"
 
