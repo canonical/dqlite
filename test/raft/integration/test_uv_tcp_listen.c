@@ -227,7 +227,8 @@ TEST(tcp_listen, success, setUp, tearDown, 0, validListenParams)
 }
 
 /* Parameters for invalid listen addresses */
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+/* Keep invalid-address cases to resolver behavior shared by these platforms. */
 static char *invalidAddresses[] = {"500.1.2.3:9000", "not-existing:9000", NULL};
 
 static char *invalidBindAddresses[] = {

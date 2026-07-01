@@ -335,6 +335,7 @@ TEST_CASE(decoder, type, null, NULL)
 TEST_CASE(decoder, type, iso8601, NULL)
 {
 	struct tuple_decoder decoder;
+	const char iso8601[] = "2018-07-20 09:49:05+00:00";
 	char buf[5][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {DQLITE_ISO8601, 0, 0, 0, 0, 0, 0, 0},
 	};
@@ -344,7 +345,8 @@ TEST_CASE(decoder, type, iso8601, NULL)
 	(void)data;
 	(void)params;
 
-	strcpy((char *)buf[1], "2018-07-20 09:49:05+00:00");
+	/* Keep the original cell layout while avoiding fortified strcpy. */
+	memcpy((char *)buf + sizeof buf[0], iso8601, sizeof iso8601);
 
 	DECODER_INIT(1);
 	DECODER_NEXT;

@@ -8,7 +8,11 @@
 #include <linux/magic.h>
 #endif
 #ifndef _WIN32
+#if defined(__APPLE__) && defined(__MACH__)
+#include <sys/mount.h>
+#else
 #include <sys/vfs.h>
+#endif
 #endif
 
 #ifndef TMPFS_MAGIC
@@ -80,7 +84,7 @@ static void closeCb(struct raft_io *io)
     {                                                            \
         uint8_t buf[8 * 4];                                      \
         void *cursor = buf;                                      \
-        char filename[strlen("metadataN") + 1];                  \
+        char filename[sizeof("metadataN")];                      \
         sprintf(filename, "metadata%d", N);                      \
         bytePut64(&cursor, FORMAT);                              \
         bytePut64(&cursor, VERSION);                             \
@@ -171,7 +175,8 @@ TEST(init, probeDirectIoOom, setUp, tearDown, 0, NULL)
 /* Out of memory conditions upon probing for async I/O. */
 TEST(init, probeAsyncIoOom, setUp, tearDown, 0, NULL)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+    /* This probes Linux AIO fallback paths, not the portable backend. */
     return MUNIT_SKIP;
 #else
     struct fixture *f = data;

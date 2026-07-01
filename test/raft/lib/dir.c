@@ -15,6 +15,9 @@
 #ifndef _WIN32
 #include <sys/statvfs.h>
 #endif
+#if defined(__APPLE__) && defined(__MACH__)
+#include <sys/fcntl.h>
+#endif
 
 #define SEP "/"
 #define TEMPLATE "raft-test-XXXXXX"
@@ -455,6 +458,21 @@ void DirFill(const char *dir, const size_t n)
 
 #ifdef _WIN32
     rv = ftruncate(fd, (off_t)(size - n));
+#elif defined(__APPLE__) && defined(__MACH__)
+    /* Darwin lacks posix_fallocate; use its preallocation API instead. */
+    fstore_t store = {
+        .fst_flags = F_ALLOCATEALL,
+        .fst_posmode = F_PEOFPOSMODE,
+        .fst_offset = 0,
+        .fst_length = (off_t)(size - n),
+        .fst_bytesalloc = 0,
+    };
+    rv = fcntl(fd, F_PREALLOCATE, &store);
+    if (rv != 0) {
+        rv = errno;
+    } else {
+        rv = ftruncate(fd, (off_t)(size - n));
+    }
 #else
     rv = posix_fallocate(fd, 0, size - n);
 #endif

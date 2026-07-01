@@ -3,6 +3,7 @@
 #ifndef TEST_RUNNER_H
 #define TEST_RUNNER_H
 
+#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,15 @@ extern int _main_suites_n;
 /* Maximum number of test cases for each suite */
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
+
+#if defined(__APPLE__) && defined(__MACH__)
+/* Darwin exposes __assert_rtn rather than glibc's __assert_fail. */
+#define DQLITE_TEST_ASSERT_FAIL(assertion, file, line, function) \
+	__assert_rtn((assertion), (file), (int)(line), (function))
+#else
+#define DQLITE_TEST_ASSERT_FAIL(assertion, file, line, function) \
+	__assert_fail((assertion), (file), (line), (function))
+#endif
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
@@ -159,7 +169,8 @@ extern int _main_suites_n;
 	void dqlite_fail(const char *__assertion, const char *__file,         \
 			 unsigned int __line, const char *__function)         \
 	{                                                                     \
-		__assert_fail(__assertion, __file, __line, __function);       \
+		DQLITE_TEST_ASSERT_FAIL(__assertion, __file, __line,          \
+						__function);                         \
 	}                                                                     \
                                                                               \
 	static void print_backtrace(int sig)                                  \

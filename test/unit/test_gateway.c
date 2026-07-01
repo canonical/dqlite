@@ -104,6 +104,13 @@ struct connection {
 		ssize_t write_rv =                                            \
 		    write(fd, (file).content.base, (file).content.len);       \
 		munit_assert_int(write_rv, ==, (file).content.len);           \
+		close(fd);                                                    \
+		char wal_path[PATH_MAX] = {};                                 \
+		snprintf(wal_path, PATH_MAX, "%s/%s-wal", f->temp_dir,       \
+			 (file).name);                                          \
+		fd = open(wal_path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);     \
+		munit_assert_int(fd, >, 0);                                   \
+		close(fd);                                                    \
 		sqlite3 *conn;                                                \
 		int sqlite_rv =                                               \
 		    sqlite3_open_v2(path, &conn, SQLITE_OPEN_READONLY, NULL); \
@@ -112,7 +119,6 @@ struct connection {
 					 integrityCheckCb, NULL, NULL);       \
 		munit_assert_int(sqlite_rv, ==, SQLITE_OK);                   \
 		sqlite3_close(conn);                                          \
-		close(fd);                                                    \
 	} while (0)
 
 static int integrityCheckCb(void *ctx, int n, char **values, char **names) {

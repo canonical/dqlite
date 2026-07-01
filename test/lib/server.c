@@ -1,6 +1,8 @@
 #ifdef _WIN32
 #include "../../src/transport.h"
 #else
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -11,7 +13,8 @@
 
 const char *test_server_address(unsigned id)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+	/* Test server helpers use TCP on platforms without abstract sockets. */
 	static char addresses[16][64];
 	munit_assert(id < 16);
 	snprintf(addresses[id], sizeof addresses[id], "127.0.0.1:%u", 9000 + id);
@@ -30,15 +33,44 @@ static int endpointConnect(void *data, const char *address, int *fd)
 	(void)data;
 #ifdef _WIN32
 	return transportDefaultConnect(NULL, address, fd);
+#elif defined(__APPLE__) && defined(__MACH__)
+	/* Avoid linking this helper against dqlite transport internals. */
+	struct sockaddr_in addr;
+	const char *port;
+	int rv;
+
+	port = strchr(address, ':');
+	munit_assert_ptr_not_null(port);
+	port++;
+
+	memset(&addr, 0, sizeof addr);
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	addr.sin_port = htons((uint16_t)atoi(port));
+
+	*fd = socket(AF_INET, SOCK_STREAM, 0);
+	munit_assert_int(*fd, !=, -1);
+	rv = fcntl(*fd, F_SETFD, FD_CLOEXEC);
+	munit_assert_int(rv, ==, 0);
+	rv = connect(*fd, (struct sockaddr *)&addr, sizeof addr);
+	return rv;
 #else
 	struct sockaddr_un addr;
+	int type = SOCK_STREAM;
 	int rv;
 	(void)address;
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path + 1, address + 1);
-	*fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+#ifdef SOCK_CLOEXEC
+	type |= SOCK_CLOEXEC;
+#endif
+	*fd = socket(AF_UNIX, type, 0);
 	munit_assert_int(*fd, !=, -1);
+#ifndef SOCK_CLOEXEC
+	rv = fcntl(*fd, F_SETFD, FD_CLOEXEC);
+	munit_assert_int(rv, ==, 0);
+#endif
 	rv = connect(*fd, (struct sockaddr *)&addr,
 		     sizeof(sa_family_t) + strlen(address + 1) + 1);
 	return rv;
