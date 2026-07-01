@@ -3,18 +3,25 @@
 #endif
 
 #include <fcntl.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <sys/vfs.h>
-#include <time.h>
 #include <unistd.h>
+#endif
+#include <time.h>
 
 #include "../lib/assert.h"
 #include "err.h"
 #include "heap.h"
 #include "uv_fs.h"
 #include "uv_os.h"
+
+#ifndef O_DSYNC
+#define O_DSYNC 0
+#endif
 
 #ifdef HAVE_XFS_XFS_H
 #include <linux/magic.h>
@@ -76,6 +83,20 @@ int UvFsCheckDir(const char *dir, char *errmsg)
 
 int UvFsSyncDir(const char *dir, char *errmsg)
 {
+#ifdef _WIN32
+	struct uv_fs_s req;
+	int rv;
+	rv = uv_fs_stat(NULL, &req, dir, NULL);
+	if (rv != 0) {
+		UvOsErrMsg(errmsg, "open directory", rv);
+		return RAFT_IOERR;
+	}
+	if (!(req.statbuf.st_mode & S_IFDIR)) {
+		ErrMsgPrintf(errmsg, "open directory: not a directory");
+		return RAFT_IOERR;
+	}
+	return 0;
+#else
 	uv_file fd;
 	int rv;
 	rv = UvOsOpen(dir, UV_FS_O_RDONLY | UV_FS_O_DIRECTORY, 0, &fd);
@@ -90,6 +111,7 @@ int UvFsSyncDir(const char *dir, char *errmsg)
 		return RAFT_IOERR;
 	}
 	return 0;
+#endif
 }
 
 int UvFsFileExists(const char *dir,
@@ -397,18 +419,31 @@ static int uvFsWriteFile(const char *dir,
 			 char *errmsg)
 {
 	uv_file fd;
+	uv_buf_t *uv_bufs;
 	int rv;
 	size_t size;
 	unsigned i;
+
 	size = 0;
+	uv_bufs = raft_malloc(sizeof *uv_bufs * n_bufs);
+	if (uv_bufs == NULL) {
+		ErrMsgOom(errmsg);
+		return RAFT_NOMEM;
+	}
 	for (i = 0; i < n_bufs; i++) {
+		if (bufs[i].len > UINT_MAX) {
+			ErrMsgPrintf(errmsg, "buffer too large");
+			rv = RAFT_TOOBIG;
+			goto err_after_uv_bufs_alloc;
+		}
 		size += bufs[i].len;
+		uv_bufs[i] = uv_buf_init(bufs[i].base, (unsigned int)bufs[i].len);
 	}
 	rv = uvFsOpenFile(dir, filename, flags, S_IRUSR | S_IWUSR, &fd, errmsg);
 	if (rv != 0) {
-		goto err;
+		goto err_after_uv_bufs_alloc;
 	}
-	rv = UvOsWrite(fd, (const uv_buf_t *)bufs, n_bufs, 0);
+	rv = UvOsWrite(fd, uv_bufs, n_bufs, 0);
 	if (rv != (int)(size)) {
 		if (rv < 0) {
 			UvOsErrMsg(errmsg, "write", rv);
@@ -426,13 +461,15 @@ static int uvFsWriteFile(const char *dir,
 	rv = UvOsClose(fd);
 	if (rv != 0) {
 		UvOsErrMsg(errmsg, "close", rv);
-		goto err;
+		goto err_after_uv_bufs_alloc;
 	}
+	raft_free(uv_bufs);
 	return 0;
 
 err_after_file_open:
 	UvOsClose(fd);
-err:
+err_after_uv_bufs_alloc:
+	raft_free(uv_bufs);
 	return rv;
 }
 
@@ -714,7 +751,8 @@ open:
 		goto err;
 	}
 
-	rv = UvOsWrite(fd, (const uv_buf_t *)buf, 1, 0);
+	uv_buf_t uv_buf = uv_buf_init(buf->base, (unsigned int)buf->len);
+	rv = UvOsWrite(fd, &uv_buf, 1, 0);
 	if (rv != (int)(buf->len)) {
 		if (rv < 0) {
 			UvOsErrMsg(errmsg, "write", rv);
@@ -815,8 +853,10 @@ int UvFsReadFile(const char *dir,
 		goto err;
 	}
 
+#ifdef POSIX_FADV_SEQUENTIAL
 	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 	dqlite_assert(rv == 0);
+#endif
 
 	buf->len = (size_t)sb.st_size;
 	buf->base = RaftHeapMalloc(buf->len);
@@ -868,8 +908,10 @@ int UvFsReadCompressedFile(const char *dir,
 		return rv;
 	}
 
+#ifdef POSIX_FADV_SEQUENTIAL
 	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 	dqlite_assert(rv == 0);
+#endif
 
 	LZ4F_decompressionContext_t ctx;
 	size_t lzrv = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
@@ -1118,6 +1160,7 @@ err:
 }
 
 /* Check if direct I/O is possible on the given fd. */
+#ifndef _WIN32
 static int probeDirectIO(int fd, size_t *size, char *errmsg)
 {
 	struct statfs fs_info; /* To check the file system type. */
@@ -1200,6 +1243,13 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 /* Check if fully non-blocking async I/O is possible on the given fd. */
 static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 {
+#if !HAVE_LINUX_AIO_ABI_H
+	(void)fd;
+	(void)size;
+	(void)errmsg;
+	*ok = false;
+	return 0;
+#else
 	void *buf;             /* Buffer to use for the probe write */
 	aio_context_t ctx = 0; /* KAIO context handle */
 	int n_events;
@@ -1279,6 +1329,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	}
 
 	return 0;
+#endif
 }
 
 #define UV__FS_PROBE_FALLOCATE_FILE ".probe_fallocate"
@@ -1307,6 +1358,7 @@ static void probeFallocate(const char *dir, bool *fallocate)
 out:
 	UvFsRemoveFile(dir, UV__FS_PROBE_FALLOCATE_FILE, ignored);
 }
+#endif
 
 int UvFsProbeCapabilities(const char *dir,
 			  size_t *direct,
@@ -1314,6 +1366,14 @@ int UvFsProbeCapabilities(const char *dir,
 			  bool *fallocate,
 			  char *errmsg)
 {
+#ifdef _WIN32
+	(void)dir;
+	(void)errmsg;
+	*direct = 0;
+	*async = false;
+	*fallocate = false;
+	return 0;
+#else
 	int fd; /* File descriptor of the probe file */
 	int rv;
 	char ignored[RAFT_ERRMSG_BUF_SIZE];
@@ -1357,4 +1417,5 @@ err_after_file_open:
 	close(fd);
 err:
 	return rv;
+#endif
 }
