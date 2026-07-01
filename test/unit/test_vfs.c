@@ -161,6 +161,11 @@ static sqlite3 *test_db_open(void)
 
 	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite");
 	munit_assert_int(rc, ==, SQLITE_OK);
+#if defined(__APPLE__) && defined(__MACH__)
+	/* Apple disables process-global SQLite auto extensions. */
+	rc = VfsConfigureConnection(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
+#endif
 
 	return db;
 }
@@ -388,6 +393,11 @@ TEST(VfsOpen, synchronous, setUp, tearDown, 0, NULL)
 
 	rc = sqlite3_open_v2(f->path, &db, flags, f->vfs.zName);
 	munit_assert_int(rc, ==, SQLITE_OK);
+#if defined(__APPLE__) && defined(__MACH__)
+	/* Apple disables process-global SQLite auto extensions. */
+	rc = VfsConfigureConnection(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
+#endif
 
 	sqlite3_stmt *stmt;
 	rc = sqlite3_prepare_v2(db, "PRAGMA synchronous", -1, &stmt, NULL);

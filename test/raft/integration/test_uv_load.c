@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <unistd.h>
 
 #include "../../../src/raft/byte.h"
@@ -757,7 +758,7 @@ TEST(load, manySnapshots, setUp, tearDown, 0, NULL)
      * before it could complete writing it. */
     uv_update_time(&f->loop);
     now = uv_now(&f->loop);
-    sprintf(filename, "snapshot-1-8-%ju", now);
+    sprintf(filename, "snapshot-1-8-%ju", (uintmax_t)now);
     SNAPSHOT_PUT(1, 8, 1);
     DirRemoveFile(f->dir, filename);
 
@@ -799,7 +800,7 @@ TEST(load, emptySnapshot, setUp, tearDown, 0, NULL)
      * of space before it could write it. */
     uv_update_time(&f->loop);
     now = uv_now(&f->loop);
-    sprintf(filename, "snapshot-2-6-%ju", now);
+    sprintf(filename, "snapshot-2-6-%ju", (uintmax_t)now);
     SNAPSHOT_PUT(2, 6, 2);
     DirTruncateFile(f->dir, filename, 0);
 
@@ -835,8 +836,8 @@ TEST(load, orphanedSnapshotFiles, setUp, tearDown, 0, NULL)
 
     /* Take a snapshot but then remove the data file, as if the server crashed
      * before it could complete writing it. */
-    sprintf(filename1_removed, "snapshot-2-18-%ju", now);
-    sprintf(metafilename1_removed, "snapshot-2-18-%ju%s", now,
+    sprintf(filename1_removed, "snapshot-2-18-%ju", (uintmax_t)now);
+    sprintf(metafilename1_removed, "snapshot-2-18-%ju%s", (uintmax_t)now,
             UV__SNAPSHOT_META_SUFFIX);
     SNAPSHOT_PUT(2, 18, 1);
     munit_assert_true(DirHasFile(f->dir, filename1_removed));
@@ -845,8 +846,8 @@ TEST(load, orphanedSnapshotFiles, setUp, tearDown, 0, NULL)
 
     /* Take a snapshot but then remove the .meta file */
     now = uv_now(&f->loop);
-    sprintf(filename2_removed, "snapshot-2-19-%ju", now);
-    sprintf(metafilename2_removed, "snapshot-2-19-%ju%s", now,
+    sprintf(filename2_removed, "snapshot-2-19-%ju", (uintmax_t)now);
+    sprintf(metafilename2_removed, "snapshot-2-19-%ju%s", (uintmax_t)now,
             UV__SNAPSHOT_META_SUFFIX);
     SNAPSHOT_PUT(2, 19, 2);
     munit_assert_true(DirHasFile(f->dir, filename2_removed));
@@ -1589,7 +1590,7 @@ TEST(load, closedSegmentWithEntriesPastSnapshot, setUp, tearDown, 0, NULL)
     sprintf(errmsg,
             "closed segment 0000000000000006-0000000000000006 is past last "
             "snapshot snapshot-1-4-%ju",
-            now);
+            (uintmax_t)now);
     SNAPSHOT_PUT(1, 4, 1);
     DirRemoveFile(f->dir, CLOSED_SEGMENT_FILENAME(1, 5));
     LOAD_ERROR(RAFT_CORRUPT, errmsg);

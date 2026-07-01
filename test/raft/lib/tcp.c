@@ -5,6 +5,7 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 #include <errno.h>
@@ -34,6 +35,19 @@ static int tcpAccept(int socket, struct sockaddr *addr, socklen_t *size)
 {
 #ifdef _WIN32
     return (int)accept((SOCKET)socket, addr, size);
+#elif defined(__APPLE__) && defined(__MACH__)
+    /* Darwin lacks accept4; preserve CLOEXEC with fcntl. */
+    int fd = accept(socket, addr, size);
+    if (fd == -1) {
+        return -1;
+    }
+    if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+        int err = errno;
+        close(fd);
+        errno = err;
+        return -1;
+    }
+    return fd;
 #else
     return accept4(socket, addr, size, SOCK_CLOEXEC);
 #endif

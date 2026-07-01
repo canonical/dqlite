@@ -1,4 +1,8 @@
+#if defined(__APPLE__) && defined(__MACH__)
+#include <uv.h>
+#else
 #include <semaphore.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 #include "../lib/fs.h"
@@ -39,7 +43,8 @@ struct fixture
 
 static const char *testAddress(unsigned id)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+	/* The @address abstract namespace is Linux-specific; use TCP here. */
 	static char addresses[CLIENT_N][32];
 	munit_assert(id < CLIENT_N);
 	snprintf(addresses[id], sizeof addresses[id], "127.0.0.1:%u", 9100 + id);
@@ -375,6 +380,7 @@ TEST(node, existing_snapshot, setUpExistingSnapshot, tearDownKeepDir, 0, test_sn
 }
 
 static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv);
+
 static int register_notify(sqlite3 *connection, char **pzErrMsg, struct sqlite3_api_routines *pThunk)
 {
 	(void)pzErrMsg;
@@ -384,36 +390,142 @@ static int register_notify(sqlite3 *connection, char **pzErrMsg, struct sqlite3_
 					  NULL, NULL, NULL);
 }
 
+#if defined(__APPLE__) && defined(__MACH__)
+struct write_sem {
+	/* macOS deprecates unnamed semaphores; keep the same test signal. */
+	uv_sem_t sem;
+	uv_mutex_t mutex;
+	int value;
+};
+
+static struct write_sem write_sem;
+
+static int writeSemInit(struct write_sem *s)
+{
+	int rv;
+	rv = uv_sem_init(&s->sem, 0);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = uv_mutex_init(&s->mutex);
+	if (rv != 0) {
+		uv_sem_destroy(&s->sem);
+		return rv;
+	}
+	s->value = 0;
+	return 0;
+}
+
+static void writeSemDestroy(struct write_sem *s)
+{
+	uv_mutex_destroy(&s->mutex);
+	uv_sem_destroy(&s->sem);
+}
+
+static void writeSemPost(struct write_sem *s)
+{
+	uv_mutex_lock(&s->mutex);
+	s->value++;
+	uv_mutex_unlock(&s->mutex);
+	uv_sem_post(&s->sem);
+}
+
+static void writeSemWait(struct write_sem *s)
+{
+	uv_sem_wait(&s->sem);
+	uv_mutex_lock(&s->mutex);
+	s->value--;
+	uv_mutex_unlock(&s->mutex);
+}
+
+static int writeSemValue(struct write_sem *s)
+{
+	int value;
+	uv_mutex_lock(&s->mutex);
+	value = s->value;
+	uv_mutex_unlock(&s->mutex);
+	return value;
+}
+#else
 static sem_t write_sem;
+
+static int writeSemInit(sem_t *s)
+{
+	return sem_init(s, 0, 0);
+}
+
+static void writeSemDestroy(sem_t *s)
+{
+	int rv = sem_destroy(s);
+	munit_assert_int(rv, ==, 0);
+}
+
+static void writeSemPost(sem_t *s)
+{
+	int rv = sem_post(s);
+	munit_assert_int(rv, ==, 0);
+}
+
+static void writeSemWait(sem_t *s)
+{
+	int rv = sem_wait(s);
+	munit_assert_int(rv, ==, 0);
+}
+
+static int writeSemValue(sem_t *s)
+{
+	int value;
+	int rv = sem_getvalue(s, &value);
+	munit_assert_int(rv, ==, 0);
+	return value;
+}
+#endif
+
 static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
 	(void)argc;
 	/* Just return the same value */
 	sqlite3_result_value(context, argv[0]);
 	/* Signal the application that we were able to get to the write part */
-	sem_post(&write_sem);
+	writeSemPost(&write_sem);
 }
 
 static void *setUpInflight(const MunitParameter params[], void *user_data)
 {
 	void *fixture = setUpInet(params, user_data);;
 
-	int rv = sem_init(&write_sem, 0, 0);
+	int rv = writeSemInit(&write_sem);
 	munit_assert_int(rv, ==, 0);
 
+#if defined(__APPLE__) && defined(__MACH__) && defined(__clang__)
+/* Keep this test exercising auto-extension behavior despite Apple warnings. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 	rv = sqlite3_auto_extension((void (*)(void))register_notify);
 	munit_assert_int(rv, ==, SQLITE_OK);
+#if defined(__APPLE__) && defined(__MACH__) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 	return fixture;
 }
 
 static void tearDownInflight(void *data)
 {
-	int rv = sqlite3_cancel_auto_extension((void (*)(void))notify_transaction);
+	int rv;
+#if defined(__APPLE__) && defined(__MACH__) && defined(__clang__)
+/* Keep teardown paired with the auto-extension registration above. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+	rv = sqlite3_cancel_auto_extension((void (*)(void))notify_transaction);
 	munit_assert_int(rv, ==, SQLITE_OK);
+#if defined(__APPLE__) && defined(__MACH__) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
-	rv = sem_destroy(&write_sem);
-	munit_assert_int(rv, ==, 0);
+	writeSemDestroy(&write_sem);
 
 	tearDown(data);
 }
@@ -440,8 +552,7 @@ TEST(node, stopInflightWrites, setUpInflight, tearDownInflight, 0, node_params)
 	rv = clientRecvResult(&clients[0], NULL, NULL, NULL);
 	munit_assert_int(rv, ==, RAFT_OK);
 
-	rv = sem_getvalue(&write_sem, &started);
-	munit_assert_int(rv, ==, 0);
+	started = writeSemValue(&write_sem);
 	munit_assert_int(started, ==, 0);
 
 	for (int i = 0; i < CLIENT_N; i++) {
@@ -450,14 +561,13 @@ TEST(node, stopInflightWrites, setUpInflight, tearDownInflight, 0, node_params)
 		munit_assert_int(rv, ==, RAFT_OK);
 	}
 
-	sem_wait(&write_sem);
+	writeSemWait(&write_sem);
 
 	/* Make sure the node can be closed */
 	rv = dqlite_node_stop(f->node);
 	munit_assert_int(rv, ==, 0);
 
-	rv = sem_getvalue(&write_sem, &started);
-	munit_assert_int(rv, ==, 0);
+	started = writeSemValue(&write_sem);
 	/* Check that some of the queries were still in flight */
 	munit_assert_int(started, <, CLIENT_N-1);
 

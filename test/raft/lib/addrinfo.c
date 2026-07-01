@@ -9,7 +9,8 @@
 #include <netdb.h>
 #endif
 
-#if defined(DQLITE_STATIC_LIBC) || defined(_WIN32)
+#if defined(DQLITE_STATIC_LIBC) || defined(_WIN32) || \
+    (defined(__APPLE__) && defined(__MACH__))
 
 void AddrinfoInjectSetResponse(int rv,
                                int num_results,
@@ -29,7 +30,7 @@ void AddrinfoInjectTearDown(void)
 {
 }
 
-#else /* ifndef DQLITE_STATIC_LIBC && !_WIN32 */
+#else /* ifndef DQLITE_STATIC_LIBC && !_WIN32 && !Darwin */
 
 bool addrinfo_mock_enabled = false;
 

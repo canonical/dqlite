@@ -36,7 +36,8 @@ static int getFamily(const MunitParameter params[])
 		family = munit_parameters_get(params, TEST_ENDPOINT_FAMILY);
 	}
 	if (family == NULL) {
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+		/* Default to TCP where Linux abstract sockets are unavailable. */
 		family = "tcp";
 #else
 		family = "unix";
@@ -51,6 +52,31 @@ static int getFamily(const MunitParameter params[])
 	}
 	munit_errorf("unexpected socket family: %s", family);
 	return -1;
+}
+
+static int endpoint_accept(int socket, struct sockaddr *address, socklen_t *size)
+{
+#ifdef _WIN32
+	return (int)accept((SOCKET)socket, address, size);
+#else
+	int fd;
+#if defined(__APPLE__) && defined(__MACH__)
+	/* Darwin lacks accept4; preserve CLOEXEC with fcntl. */
+	fd = accept(socket, address, size);
+	if (fd == -1) {
+		return -1;
+	}
+	if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+		int err = errno;
+		close(fd);
+		errno = err;
+		return -1;
+	}
+#else
+	fd = accept4(socket, address, size, SOCK_CLOEXEC);
+#endif
+	return fd;
+#endif
 }
 
 void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
@@ -192,11 +218,7 @@ int test_endpoint_accept(struct test_endpoint *e)
 	}
 
 	/* Accept the client connection. */
-#ifdef _WIN32
-	fd = (int)accept((SOCKET)e->fd, address, &size);
-#else
-	fd = accept4(e->fd, address, &size, SOCK_CLOEXEC);
-#endif
+	fd = endpoint_accept(e->fd, address, &size);
 	if (fd < 0) {
 		/* Check if the endpoint has been closed, so this is benign. */
 		if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK) {
@@ -230,7 +252,7 @@ const char *test_endpoint_address(struct test_endpoint *e)
 	return e->address;
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
 char *test_endpoint_family_values[] = {"tcp", NULL};
 #else
 char *test_endpoint_family_values[] = {"tcp", "unix", NULL};

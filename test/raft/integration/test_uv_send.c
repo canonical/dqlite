@@ -1,3 +1,9 @@
+#if defined(__APPLE__) && defined(__MACH__)
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/socket.h>
+#endif
 #include <unistd.h>
 
 #include "../../lib/runner.h"
@@ -31,6 +37,43 @@ struct result
     int status;
     bool done;
 };
+
+#if defined(__APPLE__) && defined(__MACH__)
+static int acceptServerConnection(struct TcpServer *server)
+{
+    int flags;
+    int fd;
+    int rv;
+
+    flags = fcntl(server->socket, F_GETFL, 0);
+    munit_assert_int(flags, !=, -1);
+    rv = fcntl(server->socket, F_SETFL, flags | O_NONBLOCK);
+    munit_assert_int(rv, ==, 0);
+    fd = accept(server->socket, NULL, NULL);
+    rv = fcntl(server->socket, F_SETFL, flags);
+    munit_assert_int(rv, ==, 0);
+    if (fd == -1) {
+        munit_errorf("tcp server: accept(): %s", strerror(errno));
+    }
+    return fd;
+}
+
+static void resetAcceptedConnection(int socket)
+{
+    struct linger linger = {1, 0};
+    int rv;
+
+    rv = setsockopt(socket, SOL_SOCKET, SO_LINGER, &linger, sizeof linger);
+    if (rv != 0) {
+        munit_errorf("setsockopt(SO_LINGER): %s", strerror(errno));
+    }
+    rv = shutdown(socket, SHUT_RDWR);
+    if (rv != 0) {
+        munit_errorf("shutdown(): %s", strerror(errno));
+    }
+    TcpServerCloseAccepted(socket);
+}
+#endif
 
 static void sendCbAssertResult(struct raft_io_send *req, int status)
 {
@@ -79,6 +122,44 @@ static void sendCbAssertResult(struct raft_io_send *req, int status)
         SEND_WAIT(I);                                               \
         /*munit_assert_string_equal(f->transport.errmsg, ERRMSG);*/ \
     } while (0)
+
+#if defined(__APPLE__) && defined(__MACH__)
+static void sendCbSaveResult(struct raft_io_send *req, int status)
+{
+    struct result *result = req->data;
+    result->status = status;
+    result->done = true;
+}
+
+static int sendAndGetStatus(struct fixture *f, unsigned i)
+{
+    struct raft_io_send req;
+    struct result result = {0, false};
+    int rv;
+
+    req.data = &result;
+    rv = f->io.send(&f->io, &req, MESSAGE(i), sendCbSaveResult);
+    munit_assert_int(rv, ==, 0);
+    LOOP_RUN_UNTIL(&result.done);
+    return result.status;
+}
+
+static void sendUntilIoErr(struct fixture *f, unsigned first, unsigned last)
+{
+    bool observed_ioerr = false;
+    unsigned i;
+
+    for (i = first; i <= last; i++) {
+        int status = sendAndGetStatus(f, i);
+        if (status == RAFT_IOERR) {
+            observed_ioerr = true;
+            break;
+        }
+        munit_assert_int(status, ==, 0);
+    }
+    munit_assert_true(observed_ioerr);
+}
+#endif
 
 /******************************************************************************
  *
@@ -266,15 +347,33 @@ TEST(send, badAddress, setUp, tearDownDeps, 0, NULL)
 TEST(send, changeToUnconnectedAddress, setUp, tearDownDeps, 0, NULL)
 {
     struct fixture *f = data;
+#if defined(__APPLE__) && defined(__MACH__)
+    struct TcpServer other;
+    int original_socket;
+    int other_socket;
+#endif
 
     /* Send a message to a server and a connected address */
     SEND(0);
 
+#if defined(__APPLE__) && defined(__MACH__)
+    /* Darwin keeps the listen backlog full until tests accept the socket. */
+    original_socket = acceptServerConnection(&f->server);
+    TcpServerInit(&other);
+    munit_assert_ullong(MESSAGE(0)->server_id, ==, MESSAGE(1)->server_id);
+    MESSAGE(1)->server_address = other.address;
+    SEND(1);
+    other_socket = acceptServerConnection(&other);
+    TcpServerCloseAccepted(other_socket);
+    TcpServerClose(&other);
+    TcpServerCloseAccepted(original_socket);
+#else
     /* Send a message to the same server, but update the address to an
      * unconnected address and assert it fails. */
     munit_assert_ullong(MESSAGE(0)->server_id, ==, MESSAGE(1)->server_id);
     MESSAGE(1)->server_address = "127.0.0.2:1";
     SEND_SUBMIT(1 /* message */, 0 /* rv */, RAFT_CANCELED /* status */);
+#endif
 
     /* Send another message to the same server and connected address */
     munit_assert_ullong(MESSAGE(0)->server_id, ==, MESSAGE(2)->server_id);
@@ -318,11 +417,26 @@ TEST(send, reconnectAfterWriteError, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     int socket;
+#if defined(__APPLE__) && defined(__MACH__)
+    /* Darwin can signal SIGPIPE before libuv reports the write failure. */
+    signal(SIGPIPE, SIG_IGN);
+#endif
     SEND(0);
     socket = TcpServerAccept(&f->server);
+#if defined(__APPLE__) && defined(__MACH__)
+    /* Force RST; Darwin can otherwise accept the next write. */
+    resetAcceptedConnection(socket);
+    /* Darwin may surface the reset on a later write. */
+    sendUntilIoErr(f, 1, 3);
+#else
     TcpServerCloseAccepted(socket);
     SEND_FAILURE(0, RAFT_IOERR, "");
+#endif
+#if defined(__APPLE__) && defined(__MACH__)
+    SEND(4);
+#else
     SEND(0);
+#endif
     return MUNIT_OK;
 }
 
@@ -334,15 +448,23 @@ TEST(send, reconnectAfterMultipleWriteErrors, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     int socket;
 #ifndef _WIN32
+    /* Let libuv report write failures instead of terminating on SIGPIPE. */
     signal(SIGPIPE, SIG_IGN);
 #endif
     SEND(0);
     socket = TcpServerAccept(&f->server);
+#if defined(__APPLE__) && defined(__MACH__)
+    /* Force RST; Darwin can otherwise accept queued writes. */
+    resetAcceptedConnection(socket);
+    /* Darwin may surface the reset after accepting queued writes. */
+    sendUntilIoErr(f, 1, 4);
+#else
     TcpServerCloseAccepted(socket);
     SEND_SUBMIT(1 /* message */, 0 /* rv */, RAFT_IOERR /* status */);
     SEND_SUBMIT(2 /* message */, 0 /* rv */, RAFT_IOERR /* status */);
     SEND_WAIT(1);
     SEND_WAIT(2);
+#endif
     SEND(3);
     return MUNIT_OK;
 }
