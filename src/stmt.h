@@ -38,7 +38,7 @@
  * This repeats until reaching a full 64-bit word. If there are more than 16 row
  * columns, the header will grow additional 64-bit words as needed, following
  * the same pattern. After this row preamble, the values of all columns of the
- * row follow, using the normal dqlite enconding conventions.
+ * row follow, using the normal dqlite encoding conventions.
  *
  *****************************************************************************/
 

@@ -49,7 +49,7 @@ int AioFill(aio_context_t *ctx, unsigned n)
     rv = syscall(__NR_io_setup, limit - used - n, ctx);
     if (rv != 0) {
         /* The `limit - used - n` calculation is racy and io_setup can fail with
-         * EAGAIN if in meantime another proces has reserved some events */
+         * EAGAIN if in meantime another process has reserved some events */
         munit_assert_int(errno, ==, EAGAIN);
         return -1;
     }

@@ -939,7 +939,7 @@ static bool node_info_valid(struct dqlite_node_info_ext *info)
 		return false;
 	}
 
-	/* Require 8 byte allignment */
+	/* Require 8 byte alignment */
 	if (info->size % sizeof(uint64_t)) {
 		return false;
 	}

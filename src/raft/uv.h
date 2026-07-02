@@ -185,7 +185,7 @@ int uvSegmentLoadAll(struct uv *uv,
 struct uvSegmentBuffer
 {
 	size_t block_size; /* Disk block size for direct I/O */
-	uv_buf_t arena;    /* Previously allocated memory that can be re-used */
+	uv_buf_t arena;    /* Previously allocated memory that can be reused */
 	size_t n;          /* Write offset */
 };
 

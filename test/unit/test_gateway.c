@@ -1119,7 +1119,7 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	return MUNIT_OK;
 }
 
-/* Succesfully vacuum a database */
+/* Successfully vacuum a database */
 TEST_CASE(exec, vacuum, NULL)
 {
 	struct exec_fixture *f = data;
@@ -1169,7 +1169,7 @@ TEST_CASE(exec, vacuum, NULL)
 }
 
 
-/* Succesfully vacuum a database */
+/* Successfully vacuum a database */
 TEST_CASE(exec, vacuum_variants, NULL)
 {
 	struct exec_fixture *f = data;
@@ -1540,7 +1540,7 @@ static unsigned max_rows_buffer(unsigned tuple_row_sz)
 }
 
 /* Successfully query that yields a large number of rows that need to be split
- * into several reponses. */
+ * into several responses. */
 TEST_CASE(query, large, NULL)
 {
 	struct query_fixture *f = data;
@@ -2138,7 +2138,7 @@ TEST_CASE(query, manyParams, NULL)
 
 
 /* Successfully query that yields a large number of rows that need to be split
- * into several reponses. */
+ * into several responses. */
 TEST_CASE(query, close_while_in_flight, NULL)
 {
 	struct query_fixture *f = data;

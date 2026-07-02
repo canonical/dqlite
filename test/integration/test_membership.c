@@ -254,7 +254,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 
-	/* Iniate transfer of leadership. This will cause a raft_barrier
+	/* Initiate transfer of leadership. This will cause a raft_barrier
 	 * failure while the node is technically still the leader, so the
 	 * gateway functionality that checks for leadership still succeeds. */
 	test_server_client_connect(&f->servers[0], &c_transfer);

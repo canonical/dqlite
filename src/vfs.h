@@ -54,7 +54,7 @@ struct vfsSnapshot {
 	size_t page_size;
 };
 
-/* Acquires a snapshot from the connection conn. The snapshot wil be valid until
+/* Acquires a snapshot from the connection conn. The snapshot will be valid until
  * VfsReleaseSnapshot is called.
  *
  * An acquired snapshot will take relevant locks on the database to make sure

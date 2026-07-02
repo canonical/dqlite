@@ -566,7 +566,7 @@ TEST(append, removeSegmentUponClose, setUp, tearDownDeps, 0, NULL)
 TEST(append, cancelPrepareRequest, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    /* TODO: find a way to test a prepare request cancelation */
+    /* TODO: find a way to test a prepare request cancellation */
     return MUNIT_SKIP;
     APPEND(MAX_SEGMENT_BLOCKS, SEGMENT_BLOCK_SIZE);
     APPEND_SUBMIT(0, 1, 64);

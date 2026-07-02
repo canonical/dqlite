@@ -81,7 +81,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
 	 * changes only once they are persisted. When running an election we
 	 * then use only persisted information, which is safe (while using
 	 * unpersisted information for the log and persisted information for the
-	 * configuration or viceversa would lead to inconsistencies and
+	 * configuration or vice-versa would lead to inconsistencies and
 	 * violations of Raft invariants).
 	 */
 	message.type = RAFT_IO_REQUEST_VOTE;

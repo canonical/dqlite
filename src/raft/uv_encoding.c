@@ -15,32 +15,31 @@
 	(sizeof(uint64_t) /* Message type. */ + \
 	 sizeof(uint64_t) /* Message size. */)
 
-static size_t sizeofRequestVoteV1(void)
-{
-	return sizeof(uint64_t) + /* Term. */
-	       sizeof(uint64_t) + /* Candidate ID. */
-	       sizeof(uint64_t) + /* Last log index. */
-	       sizeof(uint64_t) /* Last log term. */;
-}
+#define REQUEST_VOTE_V1_SIZE                      \
+	(sizeof(uint64_t) + /* Term. */           \
+	 sizeof(uint64_t) + /* Candidate ID. */   \
+	 sizeof(uint64_t) + /* Last log index. */ \
+	 sizeof(uint64_t) /* Last log term. */)
 
-static size_t sizeofRequestVote(void)
-{
-	return sizeofRequestVoteV1() +
-	       sizeof(uint64_t) /* Leadership transfer. */;
-}
-
-static size_t sizeofRequestVoteResultV1(void)
-{
-	return sizeof(uint64_t) + /* Term. */
-	       sizeof(uint64_t) /* Vote granted. */;
-}
-
-static size_t sizeofRequestVoteResult(void)
-{
-	return sizeofRequestVoteResultV1() + /* Size of older version 1 message
-					      */
-	       sizeof(uint64_t) /* Flags. */;
-}
+#define REQUEST_VOTE_V2_SIZE \
+	(REQUEST_VOTE_V1_SIZE + sizeof(uint64_t) /* Flags. */)
+#define REQUEST_VOTE_RESULT_V1_SIZE     \
+	(sizeof(uint64_t) + /* Term. */ \
+	 sizeof(uint64_t) /* Vote granted. */)
+#define REQUEST_VOTE_RESULT_V2_SIZE \
+	(REQUEST_VOTE_RESULT_V1_SIZE + sizeof(uint64_t) /* Flags. */)
+#define APPEND_ENTRIES_RESULT_V0_SIZE      \
+	(sizeof(uint64_t) + /* Term. */    \
+	 sizeof(uint64_t) + /* Success. */ \
+	 sizeof(uint64_t) /* Last log index. */)
+#define APPEND_ENTRIES_RESULT_V1_SIZE \
+	(APPEND_ENTRIES_RESULT_V0_SIZE + sizeof(uint64_t) /* 64 bit Flags. */)
+#define APPEND_ENTRIES_REQUEST_PREFIX_SIZE \
+	(4 * sizeof(uint64_t) /* term, prev_log_index, prev_log_term, leader_commit */)
+#define TIMEOUT_NOW_SIZE                          \
+	(sizeof(uint64_t) + /* Term. */           \
+	 sizeof(uint64_t) + /* Last log index. */ \
+	 sizeof(uint64_t) /* Last log term. */)
 
 static size_t sizeofAppendEntries(const struct raft_append_entries *p)
 {
@@ -53,24 +52,10 @@ static size_t sizeofAppendEntries(const struct raft_append_entries *p)
 	       16 * p->n_entries /* One header per entry */;
 }
 
-static size_t sizeofAppendEntriesResultV0(void)
-{
-	return sizeof(uint64_t) + /* Term. */
-	       sizeof(uint64_t) + /* Success. */
-	       sizeof(uint64_t) /* Last log index. */;
-}
-
-static size_t sizeofAppendEntriesResult(void)
-{
-	return sizeofAppendEntriesResultV0() +
-	       sizeof(uint64_t) /* 64 bit Flags. */;
-}
-
 static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 {
 	size_t conf_size = configurationEncodedSize(&p->conf);
 	return sizeof(uint64_t) + /* Leader's term. */
-	       sizeof(uint64_t) + /* Leader ID */
 	       sizeof(uint64_t) + /* Snapshot's last index */
 	       sizeof(uint64_t) + /* Term of last index */
 	       sizeof(uint64_t) + /* Configuration's index */
@@ -79,17 +64,11 @@ static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 	       sizeof(uint64_t);  /* Length of snapshot data */
 }
 
-static size_t sizeofTimeoutNow(void)
-{
-	return sizeof(uint64_t) + /* Term. */
-	       sizeof(uint64_t) + /* Last log index. */
-	       sizeof(uint64_t) /* Last log term. */;
-}
-
 size_t uvSizeofBatchHeader(size_t n)
 {
-	size_t res = 8 + /* Number of entries in the batch, little endian */
-		16 * n; /* One header per entry */;
+	size_t res = 8 +     /* Number of entries in the batch, little endian */
+		     16 * n; /* One header per entry */
+	;
 	return res;
 }
 
@@ -192,24 +171,24 @@ int uvEncodeMessage(const struct raft_message *message,
 	header.len = RAFT_IO_UV__PREAMBLE_SIZE;
 	switch (message->type) {
 		case RAFT_IO_REQUEST_VOTE:
-			header.len += sizeofRequestVote();
+			header.len += REQUEST_VOTE_V2_SIZE;
 			break;
 		case RAFT_IO_REQUEST_VOTE_RESULT:
-			header.len += sizeofRequestVoteResult();
+			header.len += REQUEST_VOTE_RESULT_V2_SIZE;
 			break;
 		case RAFT_IO_APPEND_ENTRIES:
 			header.len +=
 			    sizeofAppendEntries(&message->append_entries);
 			break;
 		case RAFT_IO_APPEND_ENTRIES_RESULT:
-			header.len += sizeofAppendEntriesResult();
+			header.len += APPEND_ENTRIES_RESULT_V1_SIZE;
 			break;
 		case RAFT_IO_INSTALL_SNAPSHOT:
 			header.len +=
 			    sizeofInstallSnapshot(&message->install_snapshot);
 			break;
 		case RAFT_IO_TIMEOUT_NOW:
-			header.len += sizeofTimeoutNow();
+			header.len += TIMEOUT_NOW_SIZE;
 			break;
 		default:
 			return RAFT_MALFORMED;
@@ -320,20 +299,25 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
 	}
 }
 
-static void decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
+static int decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
 {
 	const void *cursor;
 
+	if (buf->len != REQUEST_VOTE_V2_SIZE &&
+	    buf->len != REQUEST_VOTE_V1_SIZE) {
+		return RAFT_MALFORMED;
+	}
+
 	cursor = buf->base;
 
-	p->version = 1;
 	p->term = byteGet64(&cursor);
 	p->candidate_id = byteGet64(&cursor);
 	p->last_log_index = byteGet64(&cursor);
 	p->last_log_term = byteGet64(&cursor);
 
 	/* Support for legacy request vote that doesn't have disrupt_leader. */
-	if (buf->len == sizeofRequestVoteV1()) {
+	if (buf->len == REQUEST_VOTE_V1_SIZE) {
+		p->version = 1;
 		p->disrupt_leader = false;
 		p->pre_vote = false;
 	} else {
@@ -342,12 +326,19 @@ static void decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
 		p->disrupt_leader = (bool)(flags & 1 << 0);
 		p->pre_vote = (bool)(flags & 1 << 1);
 	}
+
+	return 0;
 }
 
-static void decodeRequestVoteResult(const uv_buf_t *buf,
-				    struct raft_request_vote_result *p)
+static int decodeRequestVoteResult(const uv_buf_t *buf,
+				   struct raft_request_vote_result *p)
 {
 	const void *cursor;
+
+	if (buf->len != REQUEST_VOTE_RESULT_V1_SIZE &&
+	    buf->len != REQUEST_VOTE_RESULT_V2_SIZE) {
+		return RAFT_MALFORMED;
+	}
 
 	cursor = buf->base;
 
@@ -355,30 +346,38 @@ static void decodeRequestVoteResult(const uv_buf_t *buf,
 	p->term = byteGet64(&cursor);
 	p->vote_granted = byteGet64(&cursor);
 
-	if (buf->len > sizeofRequestVoteResultV1()) {
+	if (buf->len > REQUEST_VOTE_RESULT_V1_SIZE) {
 		p->version = 2;
 		uint64_t flags = byteGet64(&cursor);
 		p->pre_vote = (flags & (1 << 0));
 	}
+
+	return RAFT_OK;
 }
 
 int uvDecodeBatchHeader(const void *batch,
+			size_t batch_len,
 			struct raft_entry **entries,
 			unsigned *n)
 {
 	const void *cursor = batch;
+	size_t remaining = batch_len;
 	size_t i;
 	int rv;
 
+	if (remaining < sizeof(uint64_t)) {
+		return RAFT_MALFORMED;
+	}
+
 	*n = (unsigned)byteGet64(&cursor);
+	remaining -= sizeof(uint64_t);
 
 	if (*n == 0) {
 		*entries = NULL;
-		return 0;
+		return RAFT_OK;
 	}
 
-	*entries = raft_malloc(*n * sizeof **entries);
-
+	*entries = raft_calloc(*n, sizeof **entries);
 	if (*entries == NULL) {
 		rv = RAFT_NOMEM;
 		goto err;
@@ -386,6 +385,11 @@ int uvDecodeBatchHeader(const void *batch,
 
 	for (i = 0; i < *n; i++) {
 		struct raft_entry *entry = &(*entries)[i];
+
+		if (remaining < (sizeof(uint64_t) * 2)) {
+			rv = RAFT_MALFORMED;
+			goto err_after_alloc;
+		}
 
 		entry->term = byteGet64(&cursor);
 		entry->type = byteGet8(&cursor);
@@ -400,9 +404,10 @@ int uvDecodeBatchHeader(const void *batch,
 
 		/* Size of the log entry data, little endian. */
 		entry->buf.len = byteGet32(&cursor);
+		remaining -= 16;
 	}
 
-	return 0;
+	return RAFT_OK;
 
 err_after_alloc:
 	raft_free(*entries);
@@ -418,10 +423,13 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 			       struct raft_append_entries *args)
 {
 	const void *cursor;
-	int rv;
 
 	dqlite_assert(buf != NULL);
 	dqlite_assert(args != NULL);
+
+	if (buf->len < APPEND_ENTRIES_REQUEST_PREFIX_SIZE) {
+		return RAFT_MALFORMED;
+	}
 
 	cursor = buf->base;
 
@@ -431,18 +439,20 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 	args->prev_log_term = byteGet64(&cursor);
 	args->leader_commit = byteGet64(&cursor);
 
-	rv = uvDecodeBatchHeader(cursor, &args->entries, &args->n_entries);
-	if (rv != 0) {
-		return rv;
-	}
-
-	return 0;
+	return uvDecodeBatchHeader(
+	    cursor, buf->len - APPEND_ENTRIES_REQUEST_PREFIX_SIZE,
+	    &args->entries, &args->n_entries);
 }
 
-static void decodeAppendEntriesResult(const uv_buf_t *buf,
-				      struct raft_append_entries_result *p)
+static int decodeAppendEntriesResult(const uv_buf_t *buf,
+				     struct raft_append_entries_result *p)
 {
 	const void *cursor;
+
+	if (buf->len != APPEND_ENTRIES_RESULT_V0_SIZE &&
+	    buf->len != APPEND_ENTRIES_RESULT_V1_SIZE) {
+		return RAFT_MALFORMED;
+	}
 
 	cursor = buf->base;
 
@@ -451,10 +461,12 @@ static void decodeAppendEntriesResult(const uv_buf_t *buf,
 	p->rejected = byteGet64(&cursor);
 	p->last_log_index = byteGet64(&cursor);
 	p->features = 0;
-	if (buf->len > sizeofAppendEntriesResultV0()) {
+	if (buf->len > APPEND_ENTRIES_RESULT_V0_SIZE) {
 		p->version = 1;
 		p->features = byteGet64(&cursor);
 	}
+
+	return RAFT_OK;
 }
 
 static int decodeInstallSnapshot(const uv_buf_t *buf,
@@ -462,34 +474,53 @@ static int decodeInstallSnapshot(const uv_buf_t *buf,
 {
 	const void *cursor;
 	struct raft_buffer conf;
+	size_t remaining;
 	int rv;
 
 	dqlite_assert(buf != NULL);
 	dqlite_assert(args != NULL);
 
 	cursor = buf->base;
+	remaining = buf->len;
+
+	if (remaining < (6 * sizeof(uint64_t))) {
+		return RAFT_MALFORMED;
+	}
 
 	args->version = 0;
 	args->term = byteGet64(&cursor);
 	args->last_index = byteGet64(&cursor);
 	args->last_term = byteGet64(&cursor);
 	args->conf_index = byteGet64(&cursor);
+	remaining -= (4 * sizeof(uint64_t));
 	conf.len = (size_t)byteGet64(&cursor);
+	remaining -= sizeof(uint64_t);
+
+	if (conf.len > remaining - sizeof(uint64_t)) {
+		return RAFT_MALFORMED;
+	}
+
 	conf.base = (void *)cursor;
 
 	rv = configurationDecode(&conf, &args->conf);
-	if (rv != 0) {
+	if (rv != RAFT_OK) {
 		return rv;
 	}
 	cursor = (uint8_t *)cursor + conf.len;
+	remaining -= conf.len;
 	args->data.len = (size_t)byteGet64(&cursor);
+	remaining -= sizeof(uint64_t);
 
-	return 0;
+	return RAFT_OK;
 }
 
-static void decodeTimeoutNow(const uv_buf_t *buf, struct raft_timeout_now *p)
+static int decodeTimeoutNow(const uv_buf_t *buf, struct raft_timeout_now *p)
 {
 	const void *cursor;
+
+	if (buf->len != TIMEOUT_NOW_SIZE) {
+		return RAFT_MALFORMED;
+	}
 
 	cursor = buf->base;
 
@@ -497,6 +528,8 @@ static void decodeTimeoutNow(const uv_buf_t *buf, struct raft_timeout_now *p)
 	p->term = byteGet64(&cursor);
 	p->last_log_index = byteGet64(&cursor);
 	p->last_log_term = byteGet64(&cursor);
+
+	return RAFT_OK;
 }
 
 int uvDecodeMessage(uint16_t type,
@@ -510,40 +543,48 @@ int uvDecodeMessage(uint16_t type,
 	memset(message, 0, sizeof(*message));
 	message->type = (unsigned short)type;
 
-	*payload_len = 0;
-
 	/* Decode the header. */
 	switch (type) {
 		case RAFT_IO_REQUEST_VOTE:
-			decodeRequestVote(header, &message->request_vote);
+			rv = decodeRequestVote(header, &message->request_vote);
+			*payload_len = 0;
 			break;
 		case RAFT_IO_REQUEST_VOTE_RESULT:
-			decodeRequestVoteResult(header,
-						&message->request_vote_result);
+			rv = decodeRequestVoteResult(
+			    header, &message->request_vote_result);
+			*payload_len = 0;
 			break;
 		case RAFT_IO_APPEND_ENTRIES:
 			rv = decodeAppendEntries(header,
 						 &message->append_entries);
-			for (i = 0; i < message->append_entries.n_entries;
-			     i++) {
-				*payload_len +=
-				    message->append_entries.entries[i].buf.len;
+			*payload_len = 0;
+			if (rv == RAFT_OK) {
+				for (i = 0;
+				     i < message->append_entries.n_entries;
+				     i++) {
+					*payload_len +=
+					    message->append_entries.entries[i]
+						.buf.len;
+				}
 			}
 			break;
 		case RAFT_IO_APPEND_ENTRIES_RESULT:
-			decodeAppendEntriesResult(
+			rv = decodeAppendEntriesResult(
 			    header, &message->append_entries_result);
+			*payload_len = 0;
 			break;
 		case RAFT_IO_INSTALL_SNAPSHOT:
 			rv = decodeInstallSnapshot(header,
 						   &message->install_snapshot);
-			*payload_len += message->install_snapshot.data.len;
+			*payload_len = message->install_snapshot.data.len;
 			break;
 		case RAFT_IO_TIMEOUT_NOW:
-			decodeTimeoutNow(header, &message->timeout_now);
+			rv = decodeTimeoutNow(header, &message->timeout_now);
+			*payload_len = 0;
 			break;
 		default:
 			rv = RAFT_IOERR;
+			*payload_len = 0;
 			break;
 	};
 

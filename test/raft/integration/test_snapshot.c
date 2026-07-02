@@ -556,7 +556,7 @@ TEST(snapshot, installSnapshotDuringEntriesWrite, setUp, tearDown, 0, NULL)
     CLUSTER_MAKE_PROGRESS;
     CLUSTER_MAKE_PROGRESS;
 
-    /* Make sure leader can't succesfully send any more entries */
+    /* Make sure leader can't successfully send any more entries */
     CLUSTER_DISCONNECT(0, 1);
     CLUSTER_MAKE_PROGRESS; /* Snapshot taken here */
     CLUSTER_MAKE_PROGRESS;

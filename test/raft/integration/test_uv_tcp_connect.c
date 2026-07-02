@@ -320,7 +320,7 @@ TEST(tcp_connect, closeDuringConnectAbort, setUp, tearDownDeps, 0, NULL)
     munit_assert_int(rv, ==, 0);
     check.data = f;
     CONNECT_REQ(2, BOGUS_ADDRESS, 0, RAFT_NOCONNECTION);
-    /* Successfull DNS lookup will initiate async connect */
+    /* Successful DNS lookup will initiate async connect */
     LOOP_RUN(1);
     uv_check_start(&check, checkCb);
     LOOP_RUN(1);
@@ -347,7 +347,7 @@ ADDRINFO_TEST(tcp_connect, closeDuringSecondConnect, setUp, tearDownDeps, 0, NUL
     munit_assert_int(rv, ==, 0);
     check.data = f;
     CONNECT_REQ(2, "any-host", 0, RAFT_CANCELED);
-    /* Successfull DNS lookup will initiate async connect */
+    /* Successful DNS lookup will initiate async connect */
     LOOP_RUN(1);
     uv_check_start(&check, checkCb);
     LOOP_RUN(1);

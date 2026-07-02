@@ -337,7 +337,7 @@ int replicationProgress(struct raft *r, unsigned i)
 		}
 	}
 
-	/* Send empty AppendEntries RPC when installing a snaphot */
+	/* Send empty AppendEntries RPC when installing a snapshot */
 	if (progress_state_is_snapshot) {
 		prev_index = logLastIndex(r->log);
 		prev_term = logLastTerm(r->log);

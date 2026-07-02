@@ -142,7 +142,7 @@ TEST(send, first, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* The second time a request is sent it re-uses the connection that was already
+/* The second time a request is sent it reuses the connection that was already
  * established */
 TEST(send, second, setUp, tearDown, 0, NULL)
 {

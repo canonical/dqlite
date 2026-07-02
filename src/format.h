@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Minumum and maximum page size. */
+/* Minimum and maximum page size. */
 #define FORMAT__PAGE_SIZE_MIN 512
 #define FORMAT__PAGE_SIZE_MAX 65536
 

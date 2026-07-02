@@ -235,7 +235,7 @@ TEST(tcp_listen, invalidAddress, setUp, tearDown, 0, invalidTcpListenParams)
     return MUNIT_OK;
 }
 
-/* Check success with addrinfo resolve to mutiple IP and first one is used to
+/* Check success with addrinfo resolve to multiple IP and first one is used to
  * connect */
 ADDRINFO_TEST(tcp_listen, firstOfTwo, setUp, tearDown, 0, NULL)
 {
@@ -250,7 +250,7 @@ ADDRINFO_TEST(tcp_listen, firstOfTwo, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Check success with addrinfo resolve to mutiple IP and second one is used to
+/* Check success with addrinfo resolve to multiple IP and second one is used to
  * connect */
 ADDRINFO_TEST(tcp_listen, secondOfTwo, setUp, tearDown, 0, NULL)
 {
