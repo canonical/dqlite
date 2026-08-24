@@ -180,3 +180,42 @@ TEST(client, semicolons, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+/* A NULL value must be encoded with the SQLITE_NULL type tag regardless of
+ * the column's declared type. */
+TEST(client, nullPreservedAcrossDeclaredTypes, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	struct row *row;
+	(void)params;
+
+	EXEC_SQL("CREATE TABLE t ("
+	         "  int_col       INTEGER,"
+	         "  text_col      TEXT,"
+	         "  real_col      REAL,"
+	         "  blob_col      BLOB,"
+	         "  bool_col      BOOLEAN,"
+	         "  datetime_col  DATETIME,"
+	         "  date_col      DATE,"
+	         "  timestamp_col TIMESTAMP)",
+	         &last_insert_id, &rows_affected);
+	EXEC_SQL("INSERT INTO t VALUES "
+	         "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+	         &last_insert_id, &rows_affected);
+
+	QUERY_SQL("SELECT int_col, text_col, real_col, blob_col, "
+	          "       bool_col, datetime_col, date_col, timestamp_col "
+	          "FROM t",
+	          &f->rows);
+	munit_assert_uint(f->rows.column_count, ==, 8);
+	row = f->rows.next;
+	munit_assert_not_null(row);
+	for (unsigned i = 0; i < f->rows.column_count; i++) {
+		munit_assert_int(row->values[i].type, ==, SQLITE_NULL);
+	}
+	munit_assert_ptr_null(row->next);
+
+	return MUNIT_OK;
+}
