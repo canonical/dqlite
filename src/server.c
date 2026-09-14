@@ -425,6 +425,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		if (t->bind_address == NULL) {
 			uv_close((struct uv_handle_s *)t->listener, NULL);
 			uv_run(&t->loop, UV_RUN_DEFAULT);
+			raft_free(tcp);
 			t->listener = NULL;
 			return DQLITE_NOMEM;
 		}
