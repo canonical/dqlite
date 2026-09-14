@@ -419,6 +419,10 @@ TEST(UvWriterClose, aio, setUp, tearDownDeps, 0, DirAioParams)
 {
     struct fixture *f = data;
     SKIP_IF_NO_FIXTURE;
+#if defined(DQLITE_RAFT_IO_LINUX_KAIO)
+    WRITE_CLOSE(1, 0, 0, RAFT_CANCELED);
+#else
     WRITE_CLOSE(1, 0, 0, 0);
+#endif
     return MUNIT_OK;
 }

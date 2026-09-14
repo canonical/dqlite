@@ -159,6 +159,36 @@ static void sendUntilIoErr(struct fixture *f, unsigned first, unsigned last)
     }
     munit_assert_true(observed_ioerr);
 }
+
+static void sendPendingUntilIoErr(struct fixture *f,
+                                  unsigned first,
+                                  unsigned last)
+{
+    struct raft_io_send reqs[N_MESSAGES];
+    struct result results[N_MESSAGES] = {0};
+    bool observed_ioerr = false;
+    unsigned i;
+
+    munit_assert_uint(first, <=, last);
+    munit_assert_uint(last, <, N_MESSAGES);
+
+    for (i = first; i <= last; i++) {
+        int rv;
+        reqs[i].data = &results[i];
+        rv = f->io.send(&f->io, &reqs[i], MESSAGE(i), sendCbSaveResult);
+        munit_assert_int(rv, ==, 0);
+    }
+
+    for (i = first; i <= last; i++) {
+        LOOP_RUN_UNTIL(&results[i].done);
+        if (results[i].status == RAFT_IOERR) {
+            observed_ioerr = true;
+        } else {
+            munit_assert_int(results[i].status, ==, 0);
+        }
+    }
+    munit_assert_true(observed_ioerr);
+}
 #endif
 
 /******************************************************************************
@@ -350,7 +380,6 @@ TEST(send, changeToUnconnectedAddress, setUp, tearDownDeps, 0, NULL)
 #if defined(__APPLE__) && defined(__MACH__)
     struct TcpServer other;
     int original_socket;
-    int other_socket;
 #endif
 
     /* Send a message to a server and a connected address */
@@ -360,13 +389,10 @@ TEST(send, changeToUnconnectedAddress, setUp, tearDownDeps, 0, NULL)
     /* Darwin keeps the listen backlog full until tests accept the socket. */
     original_socket = acceptServerConnection(&f->server);
     TcpServerInit(&other);
+    TcpServerStop(&other);
     munit_assert_ullong(MESSAGE(0)->server_id, ==, MESSAGE(1)->server_id);
     MESSAGE(1)->server_address = other.address;
-    SEND(1);
-    other_socket = acceptServerConnection(&other);
-    TcpServerCloseAccepted(other_socket);
-    TcpServerClose(&other);
-    TcpServerCloseAccepted(original_socket);
+    SEND_SUBMIT(1 /* message */, 0 /* rv */, RAFT_CANCELED /* status */);
 #else
     /* Send a message to the same server, but update the address to an
      * unconnected address and assert it fails. */
@@ -383,6 +409,9 @@ TEST(send, changeToUnconnectedAddress, setUp, tearDownDeps, 0, NULL)
     munit_assert_ullong(MESSAGE(0)->server_id, ==, MESSAGE(3)->server_id);
     SEND(3);
 
+#if defined(__APPLE__) && defined(__MACH__)
+    TcpServerCloseAccepted(original_socket);
+#endif
     TEAR_DOWN_UV;
     return MUNIT_OK;
 }
@@ -456,8 +485,8 @@ TEST(send, reconnectAfterMultipleWriteErrors, setUp, tearDown, 0, NULL)
 #if defined(__APPLE__) && defined(__MACH__)
     /* Force RST; Darwin can otherwise accept queued writes. */
     resetAcceptedConnection(socket);
-    /* Darwin may surface the reset after accepting queued writes. */
-    sendUntilIoErr(f, 1, 4);
+    /* Darwin may accept some writes before surfacing the reset. */
+    sendPendingUntilIoErr(f, 1, 4);
 #else
     TcpServerCloseAccepted(socket);
     SEND_SUBMIT(1 /* message */, 0 /* rv */, RAFT_IOERR /* status */);
@@ -465,7 +494,11 @@ TEST(send, reconnectAfterMultipleWriteErrors, setUp, tearDown, 0, NULL)
     SEND_WAIT(1);
     SEND_WAIT(2);
 #endif
+#if defined(__APPLE__) && defined(__MACH__)
+    SEND(0);
+#else
     SEND(3);
+#endif
     return MUNIT_OK;
 }
 

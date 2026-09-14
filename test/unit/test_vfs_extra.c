@@ -369,21 +369,30 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, NULL)
 
 	POLL(db, tx);
 
-	/* SQLite may or may not spill the third page during the transaction,
-	 * depending on the platform SQLite version. */
-	munit_assert_true(tx.n_pages == 5 || tx.n_pages == 6);
-	if (tx.n_pages == 6) {
-		munit_assert_int(tx.page_numbers[0], ==, 3);
-		munit_assert_int(tx.page_numbers[1], ==, 4);
-		munit_assert_int(tx.page_numbers[2], ==, 5);
-		munit_assert_int(tx.page_numbers[3], ==, 1);
-		munit_assert_int(tx.page_numbers[4], ==, 2);
-	} else {
+	/* Apple's system SQLite reports a cache_spill threshold of 20000 pages,
+	 * even after this test sets the suggested cache_size to one page. Since
+	 * spilling requires exceeding both limits, this small transaction keeps
+	 * all dirty pages until commit and yields the five frames below. The
+	 * Homebrew and Linux SQLite builds tested here report a threshold of one,
+	 * spill pages 3, 4, and 5 before commit, and yield the six-frame sequence
+	 * asserted in the fallback branch (page 5 is dirtied again after spill). */
+#if defined(__APPLE__) && defined(__MACH__)
+	if (tx.n_pages == 5) {
 		munit_assert_int(tx.page_numbers[0], ==, 1);
 		munit_assert_int(tx.page_numbers[1], ==, 2);
 		munit_assert_int(tx.page_numbers[2], ==, 3);
 		munit_assert_int(tx.page_numbers[3], ==, 4);
 		munit_assert_int(tx.page_numbers[4], ==, 5);
+	} else
+#endif
+	{
+		munit_assert_int(tx.n_pages, ==, 6);
+		munit_assert_int(tx.page_numbers[0], ==, 3);
+		munit_assert_int(tx.page_numbers[1], ==, 4);
+		munit_assert_int(tx.page_numbers[2], ==, 5);
+		munit_assert_int(tx.page_numbers[3], ==, 1);
+		munit_assert_int(tx.page_numbers[4], ==, 2);
+		munit_assert_int(tx.page_numbers[5], ==, 5);
 	}
 
 	APPLY(db, tx);

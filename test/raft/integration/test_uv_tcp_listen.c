@@ -1,5 +1,8 @@
 #include "../../../src/raft.h"
 #include "../../../src/raft/byte.h"
+#ifdef _WIN32
+#include "../../../src/raft/uv_tcp.h"
+#endif
 #include "../../lib/runner.h"
 #include "../lib/addrinfo.h"
 #include "../lib/heap.h"
@@ -175,19 +178,29 @@ static void tearDown(void *data)
  * callback of the listening TCP handle gets called. */
 #define LOOP_RUN_UNTIL_CONNECTED LOOP_RUN(1);
 
+#ifdef _WIN32
+/* On Windows, one loop iteration can process the connection event while
+ * leaving the handshake read pending. Wait for the abort path to complete. */
+static void waitForHandshakeAbort(struct fixture *f)
+{
+    struct UvTcp *tcp = f->transport.impl;
+    unsigned elapsed;
+
+    for (elapsed = 0; elapsed < 5000; elapsed++) {
+        int rv = uv_run(&f->loop, UV_RUN_NOWAIT);
+        if (rv < 0) {
+            munit_errorf("uv_run: %s (%d)", uv_strerror(rv), rv);
+        }
+        if (queue_empty(&tcp->accepting) && queue_empty(&tcp->aborting)) {
+            return;
+        }
+        uv_sleep(1);
+    }
+    munit_error("handshake abort was not processed");
+}
+#else
 /* After a PEER_HANDSHAKE_PARTIAL() call, spin the event loop until the read
  * callback gets called. */
-#ifdef _WIN32
-#define LOOP_RUN_UNTIL_READ                         \
-    do {                                            \
-        int rv_;                                    \
-        rv_ = uv_run(&f->loop, UV_RUN_NOWAIT);      \
-        if (rv_ < 0) {                              \
-            munit_errorf("uv_run: %s (%d)",        \
-                         uv_strerror(rv_), rv_);    \
-        }                                           \
-    } while (0)
-#else
 #define LOOP_RUN_UNTIL_READ LOOP_RUN(1);
 #endif
 
@@ -339,18 +352,20 @@ TEST(tcp_listen, badProtocol, setUp, tearDown, 0, NULL)
     LISTEN(0);
     memset(f->handshake.buf, 999, sizeof(uint64_t));
     PEER_CONNECT;
+#ifdef _WIN32
+    LOOP_RUN_UNTIL_CONNECTED;
+    PEER_HANDSHAKE;
+    waitForHandshakeAbort(f);
+#else
     PEER_HANDSHAKE;
     LOOP_RUN_UNTIL_CONNECTED;
     LOOP_RUN_UNTIL_READ;
+#endif
     return MUNIT_OK;
 }
 
 /* Parameters for sending a partial handshake */
-#ifdef _WIN32
-static char *partialHandshakeN[] = {"24", "32", NULL};
-#else
 static char *partialHandshakeN[] = {"8", "16", "24", "32", NULL};
-#endif
 
 static MunitParameterEnum peerAbortParams[] = {
     {"n", partialHandshakeN},
@@ -364,10 +379,20 @@ TEST(tcp_listen, peerAbort, setUp, tearDown, 0, peerAbortParams)
     LISTEN(0);
     const char *n = munit_parameters_get(params, "n");
     PEER_CONNECT;
+#ifdef _WIN32
+    /* Separate accept and read events so the partial handshake is consumed
+     * before the peer closes. */
+    LOOP_RUN_UNTIL_CONNECTED;
+    PEER_HANDSHAKE_PARTIAL(atoi(n));
+    LOOP_RUN(1);
+    PEER_CLOSE;
+    waitForHandshakeAbort(f);
+#else
     PEER_HANDSHAKE_PARTIAL(atoi(n));
     LOOP_RUN_UNTIL_CONNECTED;
     LOOP_RUN_UNTIL_READ;
     PEER_CLOSE;
+#endif
     return MUNIT_OK;
 }
 
@@ -433,8 +458,15 @@ TEST(tcp_listen, handshake, setUp, tearDown, 0, closeDuringHandshake)
     LISTEN(0);
     const char *n_param = munit_parameters_get(params, "n");
     PEER_CONNECT;
+#ifdef _WIN32
+    /* Process the partial read before transport teardown. */
+    LOOP_RUN_UNTIL_CONNECTED;
+    PEER_HANDSHAKE_PARTIAL(atoi(n_param));
+    LOOP_RUN(1);
+#else
     PEER_HANDSHAKE_PARTIAL(atoi(n_param));
     LOOP_RUN_UNTIL_CONNECTED;
     LOOP_RUN_UNTIL_READ;
+#endif
     return MUNIT_OK;
 }

@@ -1221,9 +1221,13 @@ TEST(VfsShmLock, releaseUnix, setUp, tearDown, 0, NULL)
 {
 	(void)data;
 	struct sqlite3_vfs *vfs = sqlite3_vfs_find("unix");
+#ifdef _WIN32
 	if (vfs == NULL) {
 		return MUNIT_SKIP;
 	}
+#else
+	munit_assert_not_null(vfs);
+#endif
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 	int flags =
 	    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
