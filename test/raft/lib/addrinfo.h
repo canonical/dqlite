@@ -8,9 +8,10 @@
  *
  * The overriding definitions of getaddrinfo and freeaddrinfo affect all code
  * that's linked with addrinfo.c, and we rely on being able to retrieve the
- * original libc definitions using dlsym. When libc is statically linked, this
- * is not possible, so we just arrange for the overriding definitions not to be
- * compiled and skip any tests that rely on getaddrinfo result injection.
+ * original libc definitions using dlsym. When libc is statically linked, or
+ * when libuv is a Darwin dylib whose internal getaddrinfo calls are not
+ * interposed by this test binary, this is not possible. In those cases, skip
+ * tests that rely on getaddrinfo result injection.
  */
 
 #ifndef TEST_ADDRINFO_H
@@ -18,10 +19,11 @@
 
 #include "test/lib/munit.h"
 
-#ifdef DQLITE_STATIC_LIBC
+#if defined(DQLITE_STATIC_LIBC) || defined(_WIN32) || \
+    (defined(__APPLE__) && defined(__MACH__))
 
 /* Trickery to cause tests that use getaddrinfo result injection to be skipped
- * when building with WITH_STATIC_DEPS. */
+ * when building with WITH_STATIC_DEPS or on Windows. */
 #define ADDRINFO_TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
     TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
     { \
@@ -30,12 +32,12 @@
     static MUNIT_UNUSED MunitResult test_unused_##S##_##C( \
         MUNIT_UNUSED const MunitParameter params[], MUNIT_UNUSED void *data)
 
-#else /* ifndef DQLITE_STATIC_LIBC */
+#else /* ifndef DQLITE_STATIC_LIBC && !_WIN32 && !Darwin */
 
 #define ADDRINFO_TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
     TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)
 
-#endif /* ifdef DQLITE_STATIC_LIBC ... else */
+#endif /* ifdef DQLITE_STATIC_LIBC || _WIN32 || Darwin ... else */
 
 #define SET_UP_ADDRINFO AddrinfoInjectSetUp(params)
 #define TEAR_DOWN_ADDRINFO AddrinfoInjectTearDown()

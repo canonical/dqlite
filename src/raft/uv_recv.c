@@ -266,8 +266,10 @@ static void uvServerReadCb(uv_stream_t *stream,
 			 * been active for sufficiently long time, we can start
 			 * encoding the version in some of the remaining bytes
 			 * of s->preamble[0]. */
+			size_t payload_len;
 			rv = uvDecodeMessage((uint16_t)type, &s->header,
-					     &s->message, &s->payload.len);
+					     &s->message, &payload_len);
+			s->payload.len = payload_len;
 			if (rv != 0) {
 				tracef("decode message: %s",
 				       errCodeToString(rv));

@@ -593,6 +593,7 @@ TEST(append, currentSegment, setUp, tearDownDeps, 0, NULL)
 /* The kernel has ran out of available AIO events. */
 TEST(append, ioSetupError, setUp, tearDown, 0, NULL)
 {
+#if defined(DQLITE_RAFT_IO_LINUX_KAIO)
     struct fixture *f = data;
     aio_context_t ctx = 0;
     int rv;
@@ -603,6 +604,10 @@ TEST(append, ioSetupError, setUp, tearDown, 0, NULL)
     APPEND_FAILURE(1, 64, RAFT_TOOMANY,
                    "setup writer for open-1: AIO events user limit exceeded");
     return MUNIT_OK;
+#else
+    (void)data;
+    return MUNIT_SKIP;
+#endif
 }
 
 /*===========================================================================

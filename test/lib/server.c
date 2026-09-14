@@ -1,23 +1,80 @@
+#ifdef _WIN32
+#include "../../src/transport.h"
+#else
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
+#endif
 
 #include "fs.h"
 #include "server.h"
 
+const char *test_server_address(unsigned id)
+{
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+	/* Test server helpers use TCP on platforms without abstract sockets. */
+	static char addresses[16][64];
+	munit_assert(id < 16);
+	snprintf(addresses[id], sizeof addresses[id], "127.0.0.1:%u", 9000 + id);
+	return addresses[id];
+#else
+	static char addresses[16][64];
+	munit_assert(id < 16);
+	snprintf(addresses[id], sizeof addresses[id], "@%u", id);
+	return addresses[id];
+#endif
+}
+
 
 static int endpointConnect(void *data, const char *address, int *fd)
 {
+	(void)data;
+#ifdef _WIN32
+	return transportDefaultConnect(NULL, address, fd);
+#elif defined(__APPLE__) && defined(__MACH__)
+	/* Avoid linking this helper against dqlite transport internals. */
+	struct sockaddr_in addr;
+	const char *port;
+	int rv;
+
+	port = strchr(address, ':');
+	munit_assert_ptr_not_null(port);
+	port++;
+
+	memset(&addr, 0, sizeof addr);
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	addr.sin_port = htons((uint16_t)atoi(port));
+
+	*fd = socket(AF_INET, SOCK_STREAM, 0);
+	munit_assert_int(*fd, !=, -1);
+	rv = fcntl(*fd, F_SETFD, FD_CLOEXEC);
+	munit_assert_int(rv, ==, 0);
+	rv = connect(*fd, (struct sockaddr *)&addr, sizeof addr);
+	return rv;
+#else
 	struct sockaddr_un addr;
+	int type = SOCK_STREAM;
 	int rv;
 	(void)address;
-	(void)data;
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path + 1, address + 1);
-	*fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+#ifdef SOCK_CLOEXEC
+	type |= SOCK_CLOEXEC;
+#endif
+	*fd = socket(AF_UNIX, type, 0);
 	munit_assert_int(*fd, !=, -1);
+#ifndef SOCK_CLOEXEC
+	rv = fcntl(*fd, F_SETFD, FD_CLOEXEC);
+	munit_assert_int(rv, ==, 0);
+#endif
 	rv = connect(*fd, (struct sockaddr *)&addr,
 		     sizeof(sa_family_t) + strlen(address + 1) + 1);
 	return rv;
+#endif
 }
 
 void test_server_setup(struct test_server *s,
@@ -27,7 +84,7 @@ void test_server_setup(struct test_server *s,
 	(void)params;
 
 	s->id = id;
-	sprintf(s->address, "@%u", id);
+	snprintf(s->address, sizeof s->address, "%s", test_server_address(id));
 
 	s->dir = test_dir_setup();
 	s->role_management = false;
@@ -126,7 +183,9 @@ void test_server_run(struct test_server *s)
 	int rv;
 
 	rv = dqlite_node_start(s->dqlite);
-	munit_assert_int(rv, ==, 0);
+	if (rv != 0) {
+		munit_errorf("dqlite_node_start(): %s", dqlite_node_errmsg(s->dqlite));
+	}
 
 	test_server_client_connect(s, &s->client);
 }

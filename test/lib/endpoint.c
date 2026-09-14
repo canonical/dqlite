@@ -1,9 +1,33 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#include <io.h>
+#endif
 
 #include "endpoint.h"
+
+static void endpoint_close(int fd)
+{
+#ifdef _WIN32
+	closesocket((SOCKET)fd);
+#else
+	close(fd);
+#endif
+}
+
+static const char *endpoint_socket_error(void)
+{
+#ifdef _WIN32
+	static char message[64];
+	snprintf(message, sizeof message, "WSA error %d", WSAGetLastError());
+	return message;
+#else
+	return strerror(errno);
+#endif
+}
 
 static int getFamily(const MunitParameter params[])
 {
@@ -12,15 +36,47 @@ static int getFamily(const MunitParameter params[])
 		family = munit_parameters_get(params, TEST_ENDPOINT_FAMILY);
 	}
 	if (family == NULL) {
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+		/* Default to TCP where Linux abstract sockets are unavailable. */
+		family = "tcp";
+#else
 		family = "unix";
+#endif
 	}
 	if (strcmp(family, "tcp") == 0) {
 		return AF_INET;
+#ifndef _WIN32
 	} else if (strcmp(family, "unix") == 0) {
 		return AF_UNIX;
+#endif
 	}
 	munit_errorf("unexpected socket family: %s", family);
 	return -1;
+}
+
+static int endpoint_accept(int socket, struct sockaddr *address, socklen_t *size)
+{
+#ifdef _WIN32
+	return (int)accept((SOCKET)socket, address, size);
+#else
+	int fd;
+#if defined(__APPLE__) && defined(__MACH__)
+	/* Darwin lacks accept4; preserve CLOEXEC with fcntl. */
+	fd = accept(socket, address, size);
+	if (fd == -1) {
+		return -1;
+	}
+	if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+		int err = errno;
+		close(fd);
+		errno = err;
+		return -1;
+	}
+#else
+	fd = accept4(socket, address, size, SOCK_CLOEXEC);
+#endif
+	return fd;
+#endif
 }
 
 void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
@@ -42,6 +98,7 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 			address = (struct sockaddr *)(&e->in_address);
 			size = sizeof e->in_address;
 			break;
+#ifndef _WIN32
 		case AF_UNIX:
 			/* Abstract Unix socket */
 			memset(&e->un_address, 0, sizeof e->un_address);
@@ -50,6 +107,7 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 			address = (struct sockaddr *)(&e->un_address);
 			size = sizeof e->un_address;
 			break;
+#endif
 		default:
 			munit_errorf("unexpected socket family: %d", e->family);
 	}
@@ -57,20 +115,20 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 	/* Create the listener fd. */
 	e->fd = socket(e->family, SOCK_STREAM, 0);
 	if (e->fd < 0) {
-		munit_errorf("socket(): %s", strerror(errno));
+		munit_errorf("socket(): %s", endpoint_socket_error());
 	}
 
 	/* Bind the listener fd. */
 	rv = bind(e->fd, address, size);
 	if (rv != 0) {
-		munit_errorf("bind(): %s", strerror(errno));
+		munit_errorf("bind(): %s", endpoint_socket_error());
 	}
 
 	/* Get the actual addressed assigned by the kernel and save it back in
 	 * the relevant struct server field (pointed to by address). */
 	rv = getsockname(e->fd, address, &size);
 	if (rv != 0) {
-		munit_errorf("getsockname(): %s", strerror(errno));
+		munit_errorf("getsockname(): %s", endpoint_socket_error());
 	}
 
 	/* Render the endpoint address. */
@@ -79,15 +137,17 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 			sprintf(e->address, "127.0.0.1:%d",
 				htons(e->in_address.sin_port));
 			break;
+#ifndef _WIN32
 		case AF_UNIX:
 			/* TODO */
 			break;
+#endif
 	}
 }
 
 void test_endpoint_tear_down(struct test_endpoint *e)
 {
-	close(e->fd);
+	endpoint_close(e->fd);
 }
 
 int test_endpoint_connect(struct test_endpoint *e)
@@ -102,22 +162,32 @@ int test_endpoint_connect(struct test_endpoint *e)
 			address = (struct sockaddr *)&e->in_address;
 			size = sizeof e->in_address;
 			break;
+#ifndef _WIN32
 		case AF_UNIX:
 			address = (struct sockaddr *)&e->un_address;
 			size = sizeof e->un_address;
 			break;
+#endif
 	}
 
 	/* Create the socket. */
 	fd = socket(e->family, SOCK_STREAM, 0);
 	if (fd < 0) {
-		munit_errorf("socket(): %s", strerror(errno));
+		munit_errorf("socket(): %s", endpoint_socket_error());
 	}
 
 	/* Connect to the server */
 	rv = connect(fd, address, size);
-	if (rv != 0 && errno != ECONNREFUSED) {
-		munit_errorf("connect(): %s", strerror(errno));
+	if (rv != 0) {
+#ifdef _WIN32
+		if (WSAGetLastError() != WSAECONNREFUSED) {
+			munit_errorf("connect(): %s", endpoint_socket_error());
+		}
+#else
+		if (errno != ECONNREFUSED) {
+			munit_errorf("connect(): %s", endpoint_socket_error());
+		}
+#endif
 	}
 
 	return fd;
@@ -126,7 +196,6 @@ int test_endpoint_connect(struct test_endpoint *e)
 int test_endpoint_accept(struct test_endpoint *e)
 {
 	struct sockaddr_in in_address;
-	struct sockaddr_un un_address;
 	struct sockaddr *address;
 	socklen_t size;
 	int fd;
@@ -137,26 +206,36 @@ int test_endpoint_accept(struct test_endpoint *e)
 			address = (struct sockaddr *)&in_address;
 			size = sizeof in_address;
 			break;
+#ifndef _WIN32
 		case AF_UNIX:
+		{
+			struct sockaddr_un un_address;
 			address = (struct sockaddr *)&un_address;
 			size = sizeof un_address;
 			break;
+		}
+#endif
 	}
 
 	/* Accept the client connection. */
-	fd = accept4(e->fd, address, &size, SOCK_CLOEXEC);
+	fd = endpoint_accept(e->fd, address, &size);
 	if (fd < 0) {
 		/* Check if the endpoint has been closed, so this is benign. */
 		if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK) {
 			return -1;
 		}
-		munit_errorf("accept4(): %s", strerror(errno));
+		munit_errorf("accept(): %s", endpoint_socket_error());
 	}
 
 	/* Set non-blocking mode */
+#ifdef _WIN32
+	u_long mode = 1;
+	rv = ioctlsocket((SOCKET)fd, FIONBIO, &mode);
+#else
 	rv = fcntl(fd, F_SETFL, O_NONBLOCK);
+#endif
 	if (rv != 0) {
-		munit_errorf("set non-blocking mode: %s", strerror(errno));
+		munit_errorf("set non-blocking mode: %s", endpoint_socket_error());
 	}
 
 	return fd;
@@ -173,4 +252,8 @@ const char *test_endpoint_address(struct test_endpoint *e)
 	return e->address;
 }
 
+#if defined(_WIN32) || (defined(__APPLE__) && defined(__MACH__))
+char *test_endpoint_family_values[] = {"tcp", NULL};
+#else
 char *test_endpoint_family_values[] = {"tcp", "unix", NULL};
+#endif

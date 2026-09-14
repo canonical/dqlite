@@ -3,6 +3,8 @@
 #include "uv.h"
 #include "uv_encoding.h"
 
+#include <inttypes.h>
+
 /* We have metadata1 and metadata2. */
 #define METADATA_FILENAME_PREFIX "metadata"
 #define METADATA_FILENAME_SIZE (sizeof(METADATA_FILENAME_PREFIX) + 2)
@@ -29,7 +31,7 @@ static int uvMetadataDecode(const void *buf,
 	uint64_t format;
 	format = byteGet64(&cursor);
 	if (format != UV__DISK_FORMAT) {
-		ErrMsgPrintf(errmsg, "bad format version %ju", format);
+		ErrMsgPrintf(errmsg, "bad format version %ju", (uintmax_t)format);
 		return RAFT_MALFORMED;
 	}
 	metadata->version = byteGet64(&cursor);

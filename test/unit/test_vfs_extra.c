@@ -11,8 +11,6 @@
 #include "../../src/lib/byte.h"
 #include "../../src/vfs.h"
 
-#include <sys/mman.h>
-
 SUITE(vfs_extra);
 
 #define N_VFS 2
@@ -82,6 +80,7 @@ static void tearDownRestorePendingByte(void *data)
 			     SQLITE_OPEN_EXRESCODE;                            \
 		int _rv = sqlite3_open_v2(VFS_PATH, &DB, _flags, VFS);         \
 		munit_assert_int(_rv, ==, SQLITE_OK);                          \
+		IF_APPLE_CONFIGURE_VFS(DB);                                     \
 		_rv =                                                          \
 		    sqlite3_exec(DB, "PRAGMA cache_size=1", NULL, NULL, NULL); \
 		if (_rv != SQLITE_OK) {                                        \
@@ -89,6 +88,17 @@ static void tearDownRestorePendingByte(void *data)
 				     sqlite3_errmsg(DB), _rv);                 \
 		}                                                              \
 	} while (0)
+
+#if defined(__APPLE__) && defined(__MACH__)
+#define IF_APPLE_CONFIGURE_VFS(DB)                                      \
+	do {                                                              \
+		/* Apple disables process-global SQLite auto extensions. */ \
+		int _rv_configure = VfsConfigureConnection(DB);             \
+		munit_assert_int(_rv_configure, ==, SQLITE_OK);             \
+	} while (0)
+#else
+#define IF_APPLE_CONFIGURE_VFS(DB) do { } while (0)
+#endif
 
 /* Close a database connection. */
 #define CLOSE(DB)                                     \
@@ -359,14 +369,31 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, NULL)
 
 	POLL(db, tx);
 
-	/* Five frames were replicated and the first frame actually contains a
-	 * spill of the third page. */
-	munit_assert_int(tx.n_pages, ==, 6);
-	munit_assert_int(tx.page_numbers[0], ==, 3);
-	munit_assert_int(tx.page_numbers[1], ==, 4);
-	munit_assert_int(tx.page_numbers[2], ==, 5);
-	munit_assert_int(tx.page_numbers[3], ==, 1);
-	munit_assert_int(tx.page_numbers[4], ==, 2);
+	/* Apple's system SQLite reports a cache_spill threshold of 20000 pages,
+	 * even after this test sets the suggested cache_size to one page. Since
+	 * spilling requires exceeding both limits, this small transaction keeps
+	 * all dirty pages until commit and yields the five frames below. The
+	 * Homebrew and Linux SQLite builds tested here report a threshold of one,
+	 * spill pages 3, 4, and 5 before commit, and yield the six-frame sequence
+	 * asserted in the fallback branch (page 5 is dirtied again after spill). */
+#if defined(__APPLE__) && defined(__MACH__)
+	if (tx.n_pages == 5) {
+		munit_assert_int(tx.page_numbers[0], ==, 1);
+		munit_assert_int(tx.page_numbers[1], ==, 2);
+		munit_assert_int(tx.page_numbers[2], ==, 3);
+		munit_assert_int(tx.page_numbers[3], ==, 4);
+		munit_assert_int(tx.page_numbers[4], ==, 5);
+	} else
+#endif
+	{
+		munit_assert_int(tx.n_pages, ==, 6);
+		munit_assert_int(tx.page_numbers[0], ==, 3);
+		munit_assert_int(tx.page_numbers[1], ==, 4);
+		munit_assert_int(tx.page_numbers[2], ==, 5);
+		munit_assert_int(tx.page_numbers[3], ==, 1);
+		munit_assert_int(tx.page_numbers[4], ==, 2);
+		munit_assert_int(tx.page_numbers[5], ==, 5);
+	}
 
 	APPLY(db, tx);
 	DONE(tx);
@@ -933,7 +960,7 @@ TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, NULL)
 	DONE(tx);
 
 	CHECKPOINT(conn);
-	
+
 	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
 	munit_assert(rv == SQLITE_OK);
 	CLOSE(conn);
@@ -985,7 +1012,7 @@ TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, 
 	DONE(tx);
 
 	CHECKPOINT(db2);
-	
+
 	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
 	munit_assert(rv == SQLITE_OK);
 	CLOSE(db1);

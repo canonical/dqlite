@@ -1,14 +1,21 @@
 #include "aio.h"
 
+#if HAVE_LINUX_AIO_ABI_H
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#endif
 
 #include "test/lib/munit.h"
 
 int AioFill(aio_context_t *ctx, unsigned n)
 {
+#if !HAVE_LINUX_AIO_ABI_H
+    (void)ctx;
+    (void)n;
+    return -1;
+#else
     char buf[256];
     int fd;
     int rv;
@@ -55,12 +62,17 @@ int AioFill(aio_context_t *ctx, unsigned n)
     }
 
     return 0;
+#endif
 }
 
 void AioDestroy(aio_context_t ctx)
 {
+#if HAVE_LINUX_AIO_ABI_H
     int rv;
 
     rv = syscall(__NR_io_destroy, ctx);
     munit_assert_int(rv, ==, 0);
+#else
+    (void)ctx;
+#endif
 }

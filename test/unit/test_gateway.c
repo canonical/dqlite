@@ -7,6 +7,7 @@
 
 #include "../../include/dqlite.h"
 #include "../../src/gateway.h"
+#include "../../src/lib/page_size.h"
 #include "../../src/lib/threadpool.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
@@ -103,6 +104,13 @@ struct connection {
 		ssize_t write_rv =                                            \
 		    write(fd, (file).content.base, (file).content.len);       \
 		munit_assert_int(write_rv, ==, (file).content.len);           \
+		close(fd);                                                    \
+		char wal_path[PATH_MAX] = {};                                 \
+		snprintf(wal_path, PATH_MAX, "%s/%s-wal", f->temp_dir,       \
+			 (file).name);                                          \
+		fd = open(wal_path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);     \
+		munit_assert_int(fd, >, 0);                                   \
+		close(fd);                                                    \
 		sqlite3 *conn;                                                \
 		int sqlite_rv =                                               \
 		    sqlite3_open_v2(path, &conn, SQLITE_OPEN_READONLY, NULL); \
@@ -111,7 +119,6 @@ struct connection {
 					 integrityCheckCb, NULL, NULL);       \
 		munit_assert_int(sqlite_rv, ==, SQLITE_OK);                   \
 		sqlite3_close(conn);                                          \
-		close(fd);                                                    \
 	} while (0)
 
 static int integrityCheckCb(void *ctx, int n, char **values, char **names) {
@@ -628,7 +635,7 @@ TEST_CASE(prepare, barrier_error, NULL)
 	raft_fixture_append_fault(&f->cluster, 0, 0);
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
-	
+
 	/* Make sure all databases require reading the last index. */
 	queue *item;
 	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
@@ -1164,7 +1171,7 @@ TEST_CASE(exec, vacuum, NULL)
 	DECODE_ROW(1, &value);
 	munit_assert_int(value.type, ==, SQLITE_INTEGER);
 	munit_assert_int(value.integer, ==, 0);
-	
+
 	return MUNIT_OK;
 }
 
@@ -1534,7 +1541,7 @@ TEST_CASE(query, one_row, NULL)
  * and an 8B EOF marker. */
 static unsigned max_rows_buffer(unsigned tuple_row_sz)
 {
-	unsigned buf_sz = sysconf(_SC_PAGESIZE);
+	unsigned buf_sz = pageSize();
 	unsigned eof_sz = 8;
 	return (buf_sz - eof_sz) / tuple_row_sz;
 }
@@ -2783,7 +2790,7 @@ TEST_CASE(query_sql, returning_large, NULL)
 	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
 
 	f->request.db_id = 0;
-	f->request.sql = 
+	f->request.sql =
 		"WITH RECURSIVE seq(n) AS ("
 		"	SELECT 1               "
 		"	UNION ALL              "
@@ -2856,7 +2863,7 @@ TEST_CASE(query_sql, returning_interrupt, NULL)
 	struct value n_rows_value = { .type = SQLITE_INTEGER, .integer = n_rows };
 
 	f->request.db_id = 0;
-	f->request.sql = 
+	f->request.sql =
 		"WITH RECURSIVE seq(n) AS ("
 		"	SELECT 1               "
 		"	UNION ALL              "
@@ -3204,7 +3211,7 @@ TEST_CASE(dump, empty, NULL)
 	(void)params;
 	struct request_dump_fixture *f = data;
 	OPEN;
-	
+
 	f->request = (struct request_dump){
 		.filename = "test",
 	};
