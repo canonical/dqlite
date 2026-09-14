@@ -271,8 +271,21 @@ SUITE(UvWriterInit)
 /* The kernel has ran out of available AIO events. */
 TEST(UvWriterInit, noResources, setUpDeps, tearDownDeps, 0, NULL)
 {
+#if defined(DQLITE_RAFT_IO_LINUX_KAIO)
+    struct fixture *f = data;
+    aio_context_t ctx = 0;
+    int rv;
+    rv = AioFill(&ctx, 0);
+    if (rv != 0) {
+        return MUNIT_SKIP;
+    }
+    INIT_ERROR(RAFT_TOOMANY, "AIO events user limit exceeded");
+    AioDestroy(ctx);
+    return MUNIT_OK;
+#else
     (void)data;
     return MUNIT_SKIP;
+#endif
 }
 
 /******************************************************************************
@@ -365,8 +378,23 @@ TEST(UvWriterSubmit, concurrentSame, NULL, NULL, 0, DirAllParams)
  * write. */
 TEST(UvWriterSubmit, noResources, setUpDeps, tearDown, 0, DirNoAioParams)
 {
+#if defined(DQLITE_RAFT_IO_LINUX_KAIO)
+    struct fixture *f = data;
+    aio_context_t ctx = 0;
+    int rv;
+    SKIP_IF_NO_FIXTURE;
+    INIT(2);
+    rv = AioFill(&ctx, 0);
+    if (rv != 0) {
+        return MUNIT_SKIP;
+    }
+    WRITE_FAILURE(1, 0, 0, RAFT_TOOMANY, "AIO events user limit exceeded");
+    AioDestroy(ctx);
+    return MUNIT_OK;
+#else
     (void)data;
     return MUNIT_SKIP;
+#endif
 }
 
 /******************************************************************************
