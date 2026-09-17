@@ -3,7 +3,7 @@ dqlite [![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-
 
 [English](./README.md)|[简体中文](./README_CH.md)
 
-[dqlite](https://dqlite.io) is a C library that implements an embeddable and
+[dqlite](https://canonical.com/dqlite) is a C library that implements an embeddable and
 replicated SQL database engine with high availability and automatic failover.
 
 The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite
@@ -46,7 +46,7 @@ Media
 -----
 
 A talk about dqlite was given at FOSDEM 2020, you can watch it
-[here](https://fosdem.org/2020/schedule/event/dqlite/).
+[here](https://archive.fosdem.org/2020/schedule/event/dqlite/).
 
 [Here](https://gcore.com/blog/comparing-litestream-rqlite-dqlite/) is a blog
 post from 2022 comparing dqlite with rqlite and Litestream, other replication
@@ -56,7 +56,7 @@ Wire protocol
 -------------
 
 If you wish to write a client, please refer to the [wire
-protocol](https://dqlite.io/docs/protocol) documentation.
+protocol](https://canonical.com/dqlite/docs/reference/wire-protocol) documentation.
 
 Install
 -------
