@@ -1689,11 +1689,11 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 
 	const size_t map_size = vfsGetMapSize();
-	const int region_count = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	const int region_per_map_count = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
 	/* mmap requires a map_size-aligned offset, but region_index may
 	 * arrive out of order when the WAL index has already been grown
 	 * by another connection. Round to the chunk boundary. */
-	const int start = (region_index / region_count) * region_count;
+	const int start = (region_index / region_per_map_count) * region_per_map_count;
 	const off_t offset = (off_t)(start * region_size);
 
 	mtx_lock(&s->mtx);
@@ -1715,7 +1715,7 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 	mtx_unlock(&s->mtx);
 
-	while (f->mappedShmRegions.cap < start + region_count) {
+	while (f->mappedShmRegions.cap < start + region_per_map_count) {
 		int newCap = 2 * f->mappedShmRegions.cap + 1;
 		void **newPtr = sqlite3_realloc64(
 		    f->mappedShmRegions.ptr,
@@ -1732,7 +1732,7 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 
 	for (int i = f->mappedShmRegions.len; i <= start;
-	     i += region_count) {
+	     i += region_per_map_count) {
 		if (f->mappedShmRegions.ptr[i] != NULL) {
 			continue;
 		}
@@ -1743,13 +1743,13 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 		if (region == MAP_FAILED) {
 			return SQLITE_IOERR_SHMMAP;
 		}
-		for (int j = 0; j < region_count; j++) {
+		for (int j = 0; j < region_per_map_count; j++) {
 			f->mappedShmRegions.ptr[i + j] =
 			    region + (j * VFS__WAL_INDEX_REGION_SIZE);
 		}
 	}
 
-	f->mappedShmRegions.len = start + region_count;
+	f->mappedShmRegions.len = start + region_per_map_count;
 	*out = f->mappedShmRegions.ptr[region_index];
 	return SQLITE_OK;
 }
