@@ -219,3 +219,64 @@ TEST(client, nullPreservedAcrossDeclaredTypes, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+/* A value whose storage class doesn't match the column's declared type must be
+ * encoded with its own type, as plain SQLite returns it. */
+TEST(client, storageClassPreservedAcrossDeclaredTypes, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	struct row *row;
+	(void)params;
+
+	EXEC_SQL(
+	    "CREATE TABLE t ("
+	    "  bool_col      BOOLEAN,"
+	    "  datetime_col  DATETIME,"
+	    "  date_col      DATE,"
+	    "  timestamp_col TIMESTAMP)",
+	    &last_insert_id, &rows_affected);
+	EXEC_SQL("INSERT INTO t VALUES (1.5, 1.5, 1.5, 1.5)", &last_insert_id,
+		 &rows_affected);
+	EXEC_SQL("INSERT INTO t VALUES ('x', x'00', x'00', x'00')",
+		 &last_insert_id, &rows_affected);
+	EXEC_SQL("INSERT INTO t VALUES (x'00', x'00', x'00', x'00')",
+		 &last_insert_id, &rows_affected);
+
+	QUERY_SQL(
+	    "SELECT bool_col, datetime_col, date_col, timestamp_col "
+	    "FROM t ORDER BY rowid",
+	    &f->rows);
+	munit_assert_uint(f->rows.column_count, ==, 4);
+
+	row = f->rows.next;
+	munit_assert_not_null(row);
+	for (unsigned i = 0; i < f->rows.column_count; i++) {
+		munit_assert_int(row->values[i].type, ==, SQLITE_FLOAT);
+		munit_assert_double_equal(row->values[i].real, 1.5, 3);
+	}
+
+	row = row->next;
+	munit_assert_not_null(row);
+	munit_assert_int(row->values[0].type, ==, SQLITE_TEXT);
+	munit_assert_string_equal(row->values[0].text, "x");
+	for (unsigned i = 1; i < f->rows.column_count; i++) {
+		munit_assert_int(row->values[i].type, ==, SQLITE_BLOB);
+		munit_assert_size(row->values[i].blob.len, ==, 1);
+		munit_assert_uint8(((uint8_t *)row->values[i].blob.base)[0], ==,
+				   0);
+	}
+
+	row = row->next;
+	munit_assert_not_null(row);
+	for (unsigned i = 0; i < f->rows.column_count; i++) {
+		munit_assert_int(row->values[i].type, ==, SQLITE_BLOB);
+		munit_assert_size(row->values[i].blob.len, ==, 1);
+		munit_assert_uint8(((uint8_t *)row->values[i].blob.base)[0], ==,
+				   0);
+	}
+	munit_assert_ptr_null(row->next);
+
+	return MUNIT_OK;
+}
