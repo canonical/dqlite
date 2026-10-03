@@ -20,12 +20,11 @@ static int value_type(sqlite3_stmt *stmt, int i)
 		    (strcasecmp(column_type_name, "TIMESTAMP") == 0)) {
 			if (type == SQLITE_INTEGER) {
 				type = DQLITE_UNIXTIME;
-			} else {
-				dqlite_assert(type == SQLITE_TEXT);
+			} else if (type == SQLITE_TEXT) {
 				type = DQLITE_ISO8601;
 			}
-		} else if (strcasecmp(column_type_name, "BOOLEAN") == 0) {
-			dqlite_assert(type == SQLITE_INTEGER);
+		} else if (strcasecmp(column_type_name, "BOOLEAN") == 0 &&
+			   type == SQLITE_INTEGER) {
 			type = DQLITE_BOOLEAN;
 		}
 	}
