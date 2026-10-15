@@ -8,6 +8,9 @@
 /* Initial size of the entry reference count hash table. */
 #define LOG__REFS_INITIAL_SIZE 256
 
+/* Indicates a request to impose no size limit in logAcquire. */
+#define LOG__ACQUIRE_UNLIMITED SIZE_MAX
+
 /**
  * State machine for an entry in the in-memory log.
  */
@@ -158,13 +161,15 @@ int logAppendConfiguration(struct raft_log *l,
 			   const raft_term term,
 			   const struct raft_configuration *configuration);
 
-/* Acquire an array of entries from the given index onwards. The payload
- * memory referenced by the @buf attribute of the returned entries is guaranteed
- * to be valid until logRelease() is called. */
+/* Acquire an array of entries from the given index onwards, up to @limit
+ * payload bytes. The first entry is always acquired. The payload memory
+ * referenced by the @buf attribute of the returned entries is guaranteed to be
+ * valid until logRelease() is called. */
 int logAcquire(struct raft_log *l,
 	       raft_index index,
 	       struct raft_entry *entries[],
-	       unsigned *n);
+	       unsigned *n,
+	       size_t limit);
 
 /* Release a previously acquired array of entries. */
 void logRelease(struct raft_log *l,

@@ -74,7 +74,8 @@ static int sendAppendEntries(struct raft *r,
 
 	/* TODO: implement a limit to the total size of the entries being sent
 	 */
-	rv = logAcquire(r->log, next_index, &args->entries, &args->n_entries);
+	rv = logAcquire(r->log, next_index, &args->entries, &args->n_entries,
+			LOG__ACQUIRE_UNLIMITED);
 	if (rv != 0) {
 		goto err;
 	}
@@ -599,7 +600,7 @@ static int appendLeader(struct raft *r, raft_index index)
 	dqlite_assert(index > r->last_stored);
 
 	/* Acquire all the entries from the given index onwards. */
-	rv = logAcquire(r->log, index, &entries, &n);
+	rv = logAcquire(r->log, index, &entries, &n, LOG__ACQUIRE_UNLIMITED);
 	if (rv != 0) {
 		goto err;
 	}
@@ -1312,7 +1313,7 @@ int replicationAppend(struct raft *r,
 
 	/* Acquire the relevant entries from the log. */
 	rv = logAcquire(r->log, request->index, &request->args.entries,
-			&request->args.n_entries);
+			&request->args.n_entries, LOG__ACQUIRE_UNLIMITED);
 	if (rv != 0) {
 		goto err_after_log_append;
 	}

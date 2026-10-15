@@ -1397,7 +1397,7 @@ static void copyLeaderLog(struct raft_fixture *f)
 		return;
 	}
 
-	rv = logAcquire(raft->log, 1, &entries, &n);
+	rv = logAcquire(raft->log, 1, &entries, &n, LOG__ACQUIRE_UNLIMITED);
 	dqlite_assert(rv == 0);
 	for (i = 0; i < n; i++) {
 		struct raft_entry *entry = &entries[i];
