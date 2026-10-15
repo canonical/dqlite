@@ -20,6 +20,10 @@
 # include "error.h"
 #endif
 
+/* Payload limit of one AppendEntries message. Must stay below the receiver's
+ * MAX_PAYLOAD_LEN in uv_recv.c. */
+#define MAX_APPEND_ENTRIES_SIZE (32 * 1024 * 1024) /* 32 MiB */
+
 /* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
  * raft_io_>send(). */
 struct sendAppendEntries
@@ -54,8 +58,9 @@ static void sendAppendEntriesCb(struct raft_io_send *send, const int status)
 	raft_free(req);
 }
 
-/* Send an AppendEntries message to the i'th server, including all log entries
- * from the given point onwards. */
+/* Send an AppendEntries message to the i'th server, including log entries from
+ * the given point onwards, up to MAX_APPEND_ENTRIES_SIZE bytes. Entries beyond
+ * that are sent in later messages, driven by the follower's responses. */
 static int sendAppendEntries(struct raft *r,
 			     const unsigned i,
 			     const raft_index prev_index,
@@ -72,10 +77,8 @@ static int sendAppendEntries(struct raft *r,
 	args->prev_log_index = prev_index;
 	args->prev_log_term = prev_term;
 
-	/* TODO: implement a limit to the total size of the entries being sent
-	 */
 	rv = logAcquire(r->log, next_index, &args->entries, &args->n_entries,
-			LOG__ACQUIRE_UNLIMITED);
+			MAX_APPEND_ENTRIES_SIZE);
 	if (rv != 0) {
 		goto err;
 	}
