@@ -1679,7 +1679,6 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 			 void volatile **out /* OUT: Mapped memory */
 )
 {
-	const off_t offset = (off_t)(region_index * region_size);
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
 	struct vfsShm *s = &f->database->shm;
 
@@ -1690,17 +1689,19 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 
 	const size_t map_size = vfsGetMapSize();
-	/* If an allocation is required, then it must be aligned with the
-	 * mapping size. */
-	PRE(((size_t)(region_index * VFS__WAL_INDEX_REGION_SIZE) % map_size) == 0);
+	const int region_per_map_count = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	/* mmap requires a map_size-aligned offset, but region_index may
+	 * arrive out of order when the WAL index has already been grown
+	 * by another connection. Round to the chunk boundary. */
+	const int start = (region_index / region_per_map_count) * region_per_map_count;
+	const off_t offset = (off_t)(start * region_size);
 
-	int rv;
 	mtx_lock(&s->mtx);
 	const off_t min_file_size = offset + (off_t)map_size;
 	if (s->size < min_file_size) {
 		if (extend) {
 			/* The file is not big enough */
-			rv = ftruncate(s->fd, min_file_size);
+			int rv = ftruncate(s->fd, min_file_size);
 			if (rv < 0) {
 				mtx_unlock(&s->mtx);
 				return SQLITE_NOMEM;
@@ -1714,8 +1715,7 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 	mtx_unlock(&s->mtx);
 
-	const int region_count = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
-	while (f->mappedShmRegions.cap < (region_index + region_count)) {
+	while (f->mappedShmRegions.cap < start + region_per_map_count) {
 		int newCap = 2 * f->mappedShmRegions.cap + 1;
 		void **newPtr = sqlite3_realloc64(
 		    f->mappedShmRegions.ptr,
@@ -1731,20 +1731,26 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 		f->mappedShmRegions.ptr = newPtr;
 	}
 
-	PRE(region_index == f->mappedShmRegions.len);
-	void *region =
-	    mmap(NULL, (size_t)map_size, PROT_READ | PROT_WRITE,
-		 f->exclMask ? MAP_PRIVATE : MAP_SHARED, s->fd,
-		 region_index * VFS__WAL_INDEX_REGION_SIZE);
-	if (region == MAP_FAILED) {
-		return SQLITE_IOERR_SHMMAP;
+	for (int i = f->mappedShmRegions.len; i <= start;
+	     i += region_per_map_count) {
+		if (f->mappedShmRegions.ptr[i] != NULL) {
+			continue;
+		}
+		void *region =
+		    mmap(NULL, (size_t)map_size, PROT_READ | PROT_WRITE,
+			 f->exclMask ? MAP_PRIVATE : MAP_SHARED, s->fd,
+			 (off_t)(i * VFS__WAL_INDEX_REGION_SIZE));
+		if (region == MAP_FAILED) {
+			return SQLITE_IOERR_SHMMAP;
+		}
+		for (int j = 0; j < region_per_map_count; j++) {
+			f->mappedShmRegions.ptr[i + j] =
+			    region + (j * VFS__WAL_INDEX_REGION_SIZE);
+		}
 	}
 
-	for (int i = 0; i < region_count; i++) {
-		f->mappedShmRegions.ptr[region_index + i] = region + (i * VFS__WAL_INDEX_REGION_SIZE);
-	}
-	f->mappedShmRegions.len = region_index + region_count;
-	*out = region;
+	f->mappedShmRegions.len = start + region_per_map_count;
+	*out = f->mappedShmRegions.ptr[region_index];
 	return SQLITE_OK;
 }
 
