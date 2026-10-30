@@ -1672,6 +1672,27 @@ TEST_CASE(query, returning, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(query, returning_constraint, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	EXEC("CREATE UNIQUE INDEX test_n ON test(n)");
+	EXEC("INSERT INTO test(n) VALUES(123)");
+	PREPARE("INSERT INTO test(n) VALUES(123) RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_CONSTRAINT_UNIQUE, FAILURE);
+	ASSERT_FAILURE(SQLITE_CONSTRAINT_UNIQUE,
+		       "UNIQUE constraint failed: test.n");
+	munit_assert_size(f->cursor->cap, ==, 0);
+	return MUNIT_OK;
+}
+
 TEST_CASE(query, returning_large, NULL)
 {
 	struct query_fixture *f = data;
@@ -2764,6 +2785,25 @@ TEST_CASE(query_sql, returning, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning_constraint, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+
+	EXEC("CREATE UNIQUE INDEX test_n ON test(n)");
+	EXEC("INSERT INTO test(n) VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test(n) VALUES(123) RETURNING n";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_CONSTRAINT_UNIQUE, FAILURE);
+	ASSERT_FAILURE(SQLITE_CONSTRAINT_UNIQUE,
+		       "UNIQUE constraint failed: test.n");
+	munit_assert_size(f->cursor->cap, ==, 0);
 	return MUNIT_OK;
 }
 
