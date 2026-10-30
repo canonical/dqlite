@@ -837,7 +837,7 @@ TEST_CASE(delete, read_empty, NULL)
 	QUERY_SQL(&conn2, "SELECT * FROM test");
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_ERROR, FAILURE);
-	ASSERT_FAILURE(&conn2, SQLITE_ERROR, "n");
+	ASSERT_FAILURE(&conn2, SQLITE_ERROR, "no such table: test");
 
 	HANGUP(&conn2);
 	HANGUP(&conn);
