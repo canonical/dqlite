@@ -1,8 +1,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 #include "buffer.h"
+#include "page_size.h"
 
 #include "../../include/dqlite.h"
 
@@ -14,7 +14,7 @@
 
 int buffer__init(struct buffer *b)
 {
-	b->page_size = (unsigned)sysconf(_SC_PAGESIZE);
+	b->page_size = pageSize();
 	b->n_pages = 1;
 	b->data = malloc(SIZE(b));
 	if (b->data == NULL) {

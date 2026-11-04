@@ -1,6 +1,9 @@
 #include "heap.h"
 
 #include <stdlib.h>
+#ifdef _WIN32
+#include <malloc.h>
+#endif
 
 #include "../raft.h"
 
@@ -31,13 +34,27 @@ static void *defaultRealloc(void *data, void *ptr, size_t size)
 static void *defaultAlignedAlloc(void *data, size_t alignment, size_t size)
 {
 	(void)data;
-	return aligned_alloc(alignment, size);
+#ifdef _WIN32
+	return _aligned_malloc(size, alignment);
+#else
+	void *ptr;
+	int rv = posix_memalign(&ptr, alignment, size);
+	if (rv != 0) {
+		return NULL;
+	}
+	return ptr;
+#endif
 }
 
 static void defaultAlignedFree(void *data, size_t alignment, void *ptr)
 {
 	(void)alignment;
+#ifdef _WIN32
+	(void)data;
+	_aligned_free(ptr);
+#else
 	defaultFree(data, ptr);
+#endif
 }
 
 static struct raft_heap defaultHeap = {

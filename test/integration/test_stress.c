@@ -5,6 +5,7 @@
 #include "../lib/sqlite.h"
 
 #include <inttypes.h>
+#include <uv.h>
 
 SUITE(stress);
 
@@ -30,12 +31,12 @@ struct fixture {
 };
 
 struct worker {
-	pthread_t thread;
+	uv_thread_t thread;
 	struct fixture *f;
 	char database[16];
 };
 
-static void *client_read(void *data)
+static void client_read(void *data)
 {
 	const char *sql =
 		"WITH RECURSIVE seq(n, id) AS ("
@@ -87,10 +88,9 @@ static void *client_read(void *data)
 	}
 
 	clientClose(&client);
-	return NULL;
 }
 
-static void *client_write(void *data)
+static void client_write(void *data)
 {
 	const char *sql = "INSERT INTO test(n) VALUES (random())";
 
@@ -126,7 +126,6 @@ static void *client_write(void *data)
 	}
 
 	clientClose(&client);
-	return NULL;
 }
 
 static void *setUp(const MunitParameter params[], void *user_data)
@@ -208,8 +207,9 @@ TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 			    &read_workers[i * f->databases + j];
 			worker->f = f;
 			snprintf(worker->database, 16, "test%d", j);
-			pthread_create(&worker->thread, NULL, client_read,
-				       worker);
+			int rv = uv_thread_create(&worker->thread, client_read,
+						  worker);
+			munit_assert_int(rv, ==, 0);
 		}
 	}
 
@@ -219,13 +219,14 @@ TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 			    &write_workers[i * f->databases + j];
 			worker->f = f;
 			snprintf(worker->database, 16, "test%d", j);
-			pthread_create(&worker->thread, NULL, client_write,
-				       worker);
+			int rv = uv_thread_create(&worker->thread, client_write,
+						  worker);
+			munit_assert_int(rv, ==, 0);
 		}
 	}
 
 	for (int i = 0; i < num_workers; i++) {
-		pthread_join(workers[i].thread, NULL);
+		uv_thread_join(&workers[i].thread);
 	}
 
 	free(workers);

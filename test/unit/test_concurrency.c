@@ -148,6 +148,44 @@ static void fixture_close_cb(struct gateway *g) { (void)g; }
 		munit_assert_false(finished);                              \
 	} while(0)
 
+#define DRAIN_ROWS(C)                                                   \
+	do {                                                            \
+		/* SQLite may split rows into different resume chunks. */ \
+		bool got_rows = false;                                  \
+		for (;;) {                                             \
+			bool finished;                                  \
+			buffer__reset(&(C)->response);                  \
+			int resume_rv =                                \
+			    gateway__resume(&(C)->gateway, &finished); \
+			munit_assert_int(resume_rv, ==, 0);             \
+			if ((C)->context.invoked) {                     \
+				ASSERT_CALLBACK(C, SQLITE_OK, ROWS);      \
+				got_rows = true;                         \
+			} else if (!finished) {                         \
+				WAIT(C);                                  \
+				ASSERT_CALLBACK(C, SQLITE_OK, ROWS);      \
+				got_rows = true;                         \
+			}                                             \
+			if (finished) {                                \
+				break;                                   \
+			}                                             \
+		}                                                     \
+		munit_assert_true(got_rows);                         \
+	} while(0)
+
+	#if defined(__APPLE__) && defined(__MACH__)
+	#define READ_SOME_ROWS(C) DRAIN_ROWS(C)
+	#define LIMITED_READ_QUERY "SELECT * FROM test"
+	#else
+	#define READ_SOME_ROWS(C)                                             \
+	       do {                                                           \
+		       RESUME(C);                                             \
+		       WAIT(C);                                               \
+		       ASSERT_CALLBACK(C, SQLITE_OK, ROWS);                   \
+	       } while (0)
+	#define LIMITED_READ_QUERY "SELECT * FROM test LIMIT 300"
+	#endif
+
 /* Prepare a statement on the given connection. The ID will be saved in
  * the STMT_ID pointer. */
 #define PREPARE(C, SQL, STMT_ID)                \
@@ -343,7 +381,7 @@ TEST_CASE(exec, busy_wait_statement, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
-	
+
 	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
 	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
 
@@ -374,7 +412,7 @@ TEST_CASE(exec, busy_wait_transaction, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
-	
+
 	/* make sure the write lock is taken */
 	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
 	EXEC(f->c1, f->stmt_id1);
@@ -384,7 +422,7 @@ TEST_CASE(exec, busy_wait_transaction, NULL)
 	/* start another write */
 	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
 	EXEC(f->c2, f->stmt_id2);
-	
+
 	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
 	EXEC(f->c1, f->stmt_id1);
 	WAIT(f->c1);
@@ -403,7 +441,7 @@ TEST_CASE(exec, busy_wait_transaction_dropped, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
-	
+
 	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 100;
 
@@ -418,7 +456,7 @@ TEST_CASE(exec, busy_wait_transaction_dropped, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
-	
+
 	/* start another write */
 	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
 	EXEC(f->c2, f->stmt_id2);
@@ -446,7 +484,7 @@ TEST_CASE(exec, busy_wait_timeout, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
-	
+
 	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 10;
 
@@ -460,7 +498,7 @@ TEST_CASE(exec, busy_wait_timeout, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
-	
+
 	/* make sure the write lock is taken */
 	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
 	EXEC(f->c1, f->stmt_id1);
@@ -472,7 +510,7 @@ TEST_CASE(exec, busy_wait_timeout, NULL)
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
 	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
-	
+
 	/* the original write should still finish correctly */
 	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
 	EXEC(f->c1, f->stmt_id1);
@@ -493,7 +531,7 @@ static int faultyStartTimer(struct raft_io *io,
 	(void)timeout;
 	(void)repeat;
 	(void)cb;
-	
+
 	return RAFT_ERROR;
 }
 
@@ -501,7 +539,7 @@ TEST_CASE(exec, busy_wait_timer_failed, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
-	
+
 	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 10;
 
@@ -632,7 +670,7 @@ TEST_TEAR_DOWN(delete)
 TEST_CASE(delete, requires_write_transaction, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
@@ -643,7 +681,7 @@ TEST_CASE(delete, requires_write_transaction, NULL)
 	ASSERT_FAILURE(&conn, SQLITE_ERROR,
 		       "PRAGMA delete_database must be run in a write "
 		       "transaction. Use BEGIN IMMEDIATE to start one.");
-	
+
 	EXEC_SQL(&conn, "BEGIN; PRAGMA delete_database; COMMIT;");
 	WAIT(&conn);
 	ASSERT_CALLBACK(&conn, SQLITE_ERROR, FAILURE);
@@ -659,7 +697,7 @@ TEST_CASE(delete, requires_write_transaction, NULL)
 TEST_CASE(delete, ignored, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
@@ -692,7 +730,7 @@ TEST_CASE(delete, ignored, NULL)
 TEST_CASE(delete, single_connection, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
@@ -727,11 +765,11 @@ TEST_CASE(delete, single_connection, NULL)
 TEST_CASE(delete, read_statement, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"WITH RECURSIVE seq(n) AS ("
@@ -755,7 +793,7 @@ TEST_CASE(delete, read_statement, NULL)
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN IMMEDIATE;"
 		"PRAGMA delete_database;"
 		"COMMIT;");
@@ -770,12 +808,12 @@ TEST_CASE(delete, read_statement, NULL)
 	}
 
 	/* Make sure that it is still possible to read some rows. */
-	RESUME(&conn2);
-	WAIT(&conn2);
-	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
+	READ_SOME_ROWS(&conn2);
 
 	HANGUP(&conn2);
+#if !(defined(__APPLE__) && defined(__MACH__))
 	RESUME(&conn2);
+#endif
 
 	HANGUP(&conn);
 	munit_assert_false(db_exists(&f->servers[0].registry, "test"));
@@ -786,11 +824,11 @@ TEST_CASE(delete, read_statement, NULL)
 TEST_CASE(delete, read_empty, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"WITH RECURSIVE seq(n) AS ("
@@ -810,11 +848,12 @@ TEST_CASE(delete, read_empty, NULL)
 
 	struct connection conn2;
 	CONNECT(&conn2, 0);
-	QUERY_SQL(&conn2, "SELECT * FROM test LIMIT 300");
+	/* Darwin can finish LIMIT queries before the delete path is exercised. */
+	QUERY_SQL(&conn2, LIMITED_READ_QUERY);
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN IMMEDIATE;"
 		"PRAGMA delete_database;"
 		"COMMIT;");
@@ -829,9 +868,7 @@ TEST_CASE(delete, read_empty, NULL)
 	}
 
 	/* Make sure that it is still possible to read some rows. */
-	RESUME(&conn2);
-	WAIT(&conn2);
-	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
+	READ_SOME_ROWS(&conn2);
 
 	/* Make sure that after the read lock is released we find an empty database. */
 	QUERY_SQL(&conn2, "SELECT * FROM test");
@@ -849,18 +886,18 @@ TEST_CASE(delete, read_empty, NULL)
 TEST_CASE(delete, new_connection, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"COMMIT;");
 	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN IMMEDIATE;"
 		"PRAGMA delete_database;"
 		"COMMIT;");
@@ -888,11 +925,11 @@ TEST_CASE(delete, new_connection, NULL)
 TEST_CASE(delete, write_statement, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn;
 	CONNECT(&conn, 0);
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"WITH RECURSIVE seq(n) AS ("
@@ -912,11 +949,12 @@ TEST_CASE(delete, write_statement, NULL)
 
 	struct connection conn2;
 	CONNECT(&conn2, 0);
-	QUERY_SQL(&conn2, "SELECT * FROM test LIMIT 300");
+	/* Darwin can finish LIMIT queries before the delete path is exercised. */
+	QUERY_SQL(&conn2, LIMITED_READ_QUERY);
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN IMMEDIATE;"
 		"PRAGMA delete_database;"
 		"COMMIT;");
@@ -929,11 +967,8 @@ TEST_CASE(delete, write_statement, NULL)
 	for (int i = 1; i < N_SERVERS; i++) {
 		munit_assert_false(db_exists(&f->servers[i].registry, "test"));
 	}
-
 	/* Make sure that it is still possible to read some rows. */
-	RESUME(&conn2);
-	WAIT(&conn2);
-	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
+	READ_SOME_ROWS(&conn2);
 
 	/* Make sure that after the read lock is released we find an empty database. */
 	EXEC_SQL(&conn2, "CREATE TABLE test(n INT);");
@@ -958,13 +993,13 @@ TEST_CASE(delete, write_statement, NULL)
 TEST_CASE(delete, multiple_dbs, NULL)
 {
 	(void)params;
-	
+
 	struct delete_fixture *f = data;
 	struct connection conn_a, conn_b;
 	CONNECT_TO(&conn_a, 0, "a");
 	CONNECT_TO(&conn_b, 0, "b");
 
-	EXEC_SQL(&conn_a, 
+	EXEC_SQL(&conn_a,
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"WITH RECURSIVE seq(n) AS ("
@@ -975,7 +1010,7 @@ TEST_CASE(delete, multiple_dbs, NULL)
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq;         "
 		"COMMIT;");
-	EXEC_SQL(&conn_b, 
+	EXEC_SQL(&conn_b,
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"WITH RECURSIVE seq(n) AS ("

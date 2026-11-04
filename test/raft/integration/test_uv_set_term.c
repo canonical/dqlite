@@ -71,7 +71,7 @@ static void closeCb(struct raft_io *io)
     {                                                            \
         uint8_t buf[8 * 4];                                      \
         void *cursor = buf;                                      \
-        char filename[strlen("metadataN") + 1];                  \
+        char filename[sizeof("metadataN")];                      \
         sprintf(filename, "metadata%d", N);                      \
         bytePut64(&cursor, FORMAT);                              \
         bytePut64(&cursor, VERSION);                             \
@@ -86,7 +86,7 @@ static void closeCb(struct raft_io *io)
     {                                                        \
         uint8_t buf2[8 * 4];                                 \
         const void *cursor = buf2;                           \
-        char filename[strlen("metadataN") + 1];              \
+        char filename[sizeof("metadataN")];                  \
         sprintf(filename, "metadata%d", N);                  \
         DirReadFile(f->dir, filename, buf2, sizeof buf2);    \
         munit_assert_int(byteGet64(&cursor), ==, UV__DISK_FORMAT);         \

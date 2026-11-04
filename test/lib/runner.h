@@ -3,6 +3,7 @@
 #ifndef TEST_RUNNER_H
 #define TEST_RUNNER_H
 
+#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,15 @@ extern int _main_suites_n;
 /* Maximum number of test cases for each suite */
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
+
+#if defined(__APPLE__) && defined(__MACH__)
+/* Darwin exposes __assert_rtn rather than glibc's __assert_fail. */
+#define DQLITE_TEST_ASSERT_FAIL(assertion, file, line, function) \
+	__assert_rtn((assertion), (file), (int)(line), (function))
+#else
+#define DQLITE_TEST_ASSERT_FAIL(assertion, file, line, function) \
+	__assert_fail((assertion), (file), (line), (function))
+#endif
 
 #ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
@@ -106,10 +116,61 @@ extern int _main_suites_n;
 	 * provide a global `SIGABRT` hook that will also print a trace in    \
 	 * case an assert is triggered by another library (libuv, liblz4,     \
 	 * libsqlite3) and provide useful diagnostics there as well. */       \
+	__attribute__((noreturn)) void dqlite_fail(                          \
+		const char *__assertion, const char *__file,                    \
+			 unsigned int __line, const char *__function)         \
+	{                                                                     \
+		(void)__assertion;                                             \
+		(void)__file;                                                  \
+		(void)__line;                                                  \
+		(void)__function;                                              \
+		PRINT_BACKTRACE(1);                                            \
+		abort();                                                       \
+	}                                                                     \
+	                                                                      \
+	static void print_backtrace(int sig)                                  \
+	{                                                                     \
+		(void)sig;                                                    \
+		/* Prevent recursive printing of backtrace in case printing   \
+		 * raises a signal (because of a bug?) */                     \
+		static bool printing = false;                                 \
+		if (!printing) {                                              \
+			printing = true;                                      \
+			PRINT_BACKTRACE(3);                                   \
+			printing = false;                                     \
+		}                                                             \
+	}                                                                     \
+	                                                                      \
+	MunitSuite _main_suites[SUITE__CAP];                                  \
+	int _main_suites_n = 0;                                               \
+	                                                                      \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])               \
+	{                                                                     \
+		(void)argc;                                                   \
+		(void)argv;                                                   \
+		/* SIGPIPE is not available on Windows. */                    \
+		if (0) {                                                      \
+			signal(SIGABRT, print_backtrace);                     \
+		}                                                             \
+		dqliteTracingMaybeEnable(true);                               \
+		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
+	}
+
+/* Define the top-level suites array and the main() function of the test. */
+#ifndef _WIN32
+#undef RUNNER
+#define RUNNER(NAME)                                                          \
+	/* This overrides the weak symbol defined in assert.h and will remove \
+	 * any diagnostic printed by dqlite by default. This way tests can    \
+	 * provide a global `SIGABRT` hook that will also print a trace in    \
+	 * case an assert is triggered by another library (libuv, liblz4,     \
+	 * libsqlite3) and provide useful diagnostics there as well. */       \
 	void dqlite_fail(const char *__assertion, const char *__file,         \
 			 unsigned int __line, const char *__function)         \
 	{                                                                     \
-		__assert_fail(__assertion, __file, __line, __function);       \
+		DQLITE_TEST_ASSERT_FAIL(__assertion, __file, __line,          \
+						__function);                         \
 	}                                                                     \
                                                                               \
 	static void print_backtrace(int sig)                                  \
@@ -136,6 +197,7 @@ extern int _main_suites_n;
 		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
 		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
 	}
+#endif
 
 /* Declare and register a new test suite #S belonging to the file's test module.
  *

@@ -4,9 +4,12 @@
 #define UV_OS_H_
 
 #include <fcntl.h>
+#if HAVE_LINUX_AIO_ABI_H
 #include <linux/aio_abi.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <uv.h>
 
 /* Maximum size of a full file system path string. */
@@ -73,7 +76,8 @@ int UvOsRename(const char *path1, const char *path2);
 /* Join dir and filename into a full OS path. */
 int UvOsJoin(const char *dir, const char *filename, char *path);
 
-/* TODO: figure a portable abstraction. */
+#if HAVE_LINUX_AIO_ABI_H
+/* Linux KAIO helpers. */
 int UvOsIoSetup(unsigned nr, aio_context_t *ctxp);
 int UvOsIoDestroy(aio_context_t ctx);
 int UvOsIoSubmit(aio_context_t ctx, long nr, struct iocb **iocbpp);
@@ -83,6 +87,7 @@ int UvOsIoGetevents(aio_context_t ctx,
 		    struct io_event *events,
 		    struct timespec *timeout);
 int UvOsEventfd(unsigned int initval, int flags);
+#endif
 int UvOsSetDirectIo(uv_file fd);
 
 /* Format an error message caused by a failed system call or stdlib function. */

@@ -652,7 +652,7 @@ psnip_clock_monotonic_get_precision (void) {
   static mach_timebase_info_data_t tbi = { 0, };
   if (tbi.denom == 0)
     mach_timebase_info(&tbi);
-  return (psnip_uint32_t) (tbi.number / tbi.denom);
+  return (psnip_uint32_t) (tbi.numer / tbi.denom);
 #elif defined(PSNIP_CLOCK_MONOTONIC_METHOD) && PSNIP_CLOCK_MONOTONIC_METHOD == PSNIP_CLOCK_METHOD_GETTICKCOUNT64
   return 1000;
 #elif defined(PSNIP_CLOCK_MONOTONIC_METHOD) && PSNIP_CLOCK_MONOTONIC_METHOD == PSNIP_CLOCK_METHOD_QUERYPERFORMANCECOUNTER
@@ -676,7 +676,7 @@ psnip_clock_monotonic_get_time (struct PsnipClockTimespec* res) {
   static mach_timebase_info_data_t tbi = { 0, };
   if (tbi.denom == 0)
     mach_timebase_info(&tbi);
-  nsec *= ((psnip_uint64_t) tbi.number) / ((psnip_uint64_t) tbi.denom);
+  nsec *= ((psnip_uint64_t) tbi.numer) / ((psnip_uint64_t) tbi.denom);
   res->seconds = nsec / PSNIP_CLOCK_NSEC_PER_SEC;
   res->nanoseconds = nsec % PSNIP_CLOCK_NSEC_PER_SEC;
 #elif defined(PSNIP_CLOCK_MONOTONIC_METHOD) && PSNIP_CLOCK_MONOTONIC_METHOD == PSNIP_CLOCK_METHOD_QUERYPERFORMANCECOUNTER

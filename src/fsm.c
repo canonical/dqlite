@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <stdint.h>
-#include <sys/mman.h>
 
 #include "command.h"
 #include "fsm.h"

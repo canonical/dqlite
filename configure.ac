@@ -78,8 +78,71 @@ AX_CODE_COVERAGE
 # Checks for header files.
 AC_CHECK_HEADERS([linux/io_uring.h linux/aio_abi.h xfs/xfs.h])
 
+AC_ARG_WITH([raft-io],
+  AS_HELP_STRING([--with-raft-io=auto|portable|linux-kaio],
+           [select Raft storage writer backend [default=portable]]),
+  [],
+  [with_raft_io=portable])
+AS_CASE([$with_raft_io],
+  [auto],
+    [AS_CASE([$host_os],
+      [linux*], [raft_io_backend=linux-kaio],
+      [raft_io_backend=portable])],
+  [portable],
+    [raft_io_backend=portable],
+  [linux-kaio],
+    [raft_io_backend=linux-kaio],
+  [AC_MSG_ERROR([invalid --with-raft-io value: $with_raft_io])])
+
+AS_IF([test "x$raft_io_backend" = "xlinux-kaio"],
+  [AS_CASE([$host_os],
+    [linux*], [],
+    [AC_MSG_ERROR([the linux-kaio Raft I/O backend is only available on Linux])])
+   AS_IF([test "x$with_raft_io" != "xauto" && test "x$ac_cv_header_linux_aio_abi_h" != "xyes"],
+    [AC_MSG_ERROR([the linux-kaio Raft I/O backend requires <linux/aio_abi.h>])])])
+
+AC_ARG_WITH([vfs-shm],
+  AS_HELP_STRING([--with-vfs-shm=auto|linux-remap|portable],
+           [select SQLite VFS shared-memory provider [default=auto]]),
+  [],
+  [with_vfs_shm=auto])
+AS_CASE([$with_vfs_shm],
+  [auto],
+    [AS_CASE([$host_os],
+      [linux*], [vfs_shm_provider=linux-remap],
+      [vfs_shm_provider=portable])],
+  [linux-remap],
+    [vfs_shm_provider=linux-remap],
+  [portable],
+    [vfs_shm_provider=portable],
+  [AC_MSG_ERROR([invalid --with-vfs-shm value: $with_vfs_shm])])
+
+AS_IF([test "x$vfs_shm_provider" = "xlinux-remap"],
+  [AS_CASE([$host_os],
+    [linux*], [],
+    [AC_MSG_ERROR([the linux-remap VFS shared-memory provider is only available on Linux])])])
+AM_CONDITIONAL([VFS_SHM_LINUX_REMAP], [test "x$vfs_shm_provider" = "xlinux-remap"])
+AM_CONDITIONAL([VFS_SHM_PORTABLE], [test "x$vfs_shm_provider" = "xportable"])
+
 # Checks for library functions and definitions.
-AC_CHECK_DECLS(RWF_NOWAIT, [], [AC_MSG_ERROR(Linux kernel >= 4.14 required.)], [#include <linux/aio_abi.h>])
+AS_IF([test "x$vfs_shm_provider" = "xlinux-remap"],
+  [AC_CHECK_DECLS(RWF_NOWAIT, [], [AC_MSG_ERROR(Linux kernel >= 4.14 required.)], [#include <linux/aio_abi.h>])],
+  [AC_CHECK_DECLS(RWF_NOWAIT, [], [], [
+#ifdef HAVE_LINUX_AIO_ABI_H
+#include <linux/aio_abi.h>
+#endif
+  ])])
+
+AS_IF([test "x$with_raft_io" = "xauto" &&
+  test "x$raft_io_backend" = "xlinux-kaio" &&
+  { test "x$ac_cv_header_linux_aio_abi_h" != "xyes" ||
+    test "x$ac_cv_have_decl_RWF_NOWAIT" != "xyes"; }],
+  [raft_io_backend=portable])
+AS_IF([test "x$with_raft_io" != "xauto" &&
+  test "x$raft_io_backend" = "xlinux-kaio" &&
+  test "x$ac_cv_have_decl_RWF_NOWAIT" != "xyes"],
+  [AC_MSG_ERROR([the linux-kaio Raft I/O backend requires RWF_NOWAIT])])
+AM_CONDITIONAL([RAFT_IO_LINUX_KAIO], [test "x$raft_io_backend" = "xlinux-kaio"])
 
 # Check if zfs >= 0.8.0 is available (for direct I/O support).
 AC_CHECK_PROG(have_zfs, zfs, yes)

@@ -1,9 +1,15 @@
 #include <inttypes.h>
+#include <errno.h>
 #include <limits.h>
-#include <poll.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <poll.h>
 #include <unistd.h>
+#endif
 
 #include "../lib/assert.h"
 #include "../message.h"
@@ -48,11 +54,127 @@ char *strdupChecked(const char *s)
 
 char *strndupChecked(const char *s, size_t n)
 {
-	char *p = strndup(s, n);
+	char *p = malloc(n + 1);
 	if (p == NULL) {
 		oom();
 	}
+	memcpy(p, s, n);
+	p[n] = '\0';
 	return p;
+}
+
+enum {
+	CLIENT_POLLIN = 1 << 0,
+	CLIENT_POLLOUT = 1 << 1,
+	CLIENT_POLLERR = 1 << 2,
+};
+
+static int clientPollFd(int fd, int events, long long millis, int *revents)
+{
+#ifdef _WIN32
+	SOCKET socket = (SOCKET)fd;
+	fd_set readfds;
+	fd_set writefds;
+	struct timeval timeout;
+	struct timeval *timeout_ptr = NULL;
+	int rv;
+
+	FD_ZERO(&readfds);
+	FD_ZERO(&writefds);
+	if (events & CLIENT_POLLIN) {
+		FD_SET(socket, &readfds);
+	}
+	if (events & CLIENT_POLLOUT) {
+		FD_SET(socket, &writefds);
+	}
+	if (millis >= 0) {
+		timeout.tv_sec = (long)(millis / 1000);
+		timeout.tv_usec = (long)((millis % 1000) * 1000);
+		timeout_ptr = &timeout;
+	}
+
+	rv = select(0,
+	    (events & CLIENT_POLLIN) ? &readfds : NULL,
+	    (events & CLIENT_POLLOUT) ? &writefds : NULL,
+	    NULL,
+	    timeout_ptr);
+	if (rv == SOCKET_ERROR) {
+		errno = WSAGetLastError() == WSAEINTR ? EINTR : EIO;
+		return -1;
+	}
+	*revents = 0;
+	if (rv > 0) {
+		if ((events & CLIENT_POLLIN) && FD_ISSET(socket, &readfds)) {
+			*revents |= CLIENT_POLLIN;
+		}
+		if ((events & CLIENT_POLLOUT) && FD_ISSET(socket, &writefds)) {
+			*revents |= CLIENT_POLLOUT;
+		}
+	}
+	return rv;
+#else
+	struct pollfd pfd;
+	int rv;
+
+	pfd.fd = fd;
+	pfd.events = 0;
+	pfd.revents = 0;
+	if (events & CLIENT_POLLIN) {
+		pfd.events |= POLLIN;
+	}
+	if (events & CLIENT_POLLOUT) {
+		pfd.events |= POLLOUT;
+	}
+	rv = poll(&pfd, 1, (millis > INT_MAX) ? INT_MAX : (int)millis);
+	*revents = 0;
+	if (pfd.revents & POLLIN) {
+		*revents |= CLIENT_POLLIN;
+	}
+	if (pfd.revents & POLLOUT) {
+		*revents |= CLIENT_POLLOUT;
+	}
+	if (pfd.revents & ~(POLLIN | POLLOUT)) {
+		*revents |= CLIENT_POLLERR;
+	}
+	return rv;
+#endif
+}
+
+static ssize_t clientReadFd(int fd, void *buf, size_t len)
+{
+#ifdef _WIN32
+	int n = recv((SOCKET)fd, buf, len > INT_MAX ? INT_MAX : (int)len, 0);
+	if (n == SOCKET_ERROR) {
+		errno = WSAGetLastError() == WSAEINTR ? EINTR : EIO;
+		return -1;
+	}
+	return n;
+#else
+	return read(fd, buf, len);
+#endif
+}
+
+static ssize_t clientWriteFd(int fd, const void *buf, size_t len)
+{
+#ifdef _WIN32
+	int n = send((SOCKET)fd, buf, len > INT_MAX ? INT_MAX : (int)len, 0);
+	if (n == SOCKET_ERROR) {
+		errno = WSAGetLastError() == WSAEINTR ? EINTR : EIO;
+		return -1;
+	}
+	return n;
+#else
+	return write(fd, buf, len);
+#endif
+}
+
+static void clientCloseFd(int fd)
+{
+#ifdef _WIN32
+	closesocket((SOCKET)fd);
+#else
+	close(fd);
+#endif
 }
 
 /* Convert a value that potentially borrows data from the client_proto read
@@ -123,15 +245,11 @@ static ssize_t doRead(int fd,
 		      struct client_context *context)
 {
 	ssize_t total;
-	struct pollfd pfd;
 	struct timespec now;
 	long long millis;
 	ssize_t n;
+	int revents;
 	int rv;
-
-	pfd.fd = fd;
-	pfd.events = POLLIN;
-	pfd.revents = 0;
 
 	total = 0;
 	while ((size_t)total < buf_len) {
@@ -152,7 +270,7 @@ static ssize_t doRead(int fd,
 			 * indefinitely. */
 			millis = -1;
 		}
-		rv = poll(&pfd, 1, (millis > INT_MAX) ? INT_MAX : (int)millis);
+		rv = clientPollFd(fd, CLIENT_POLLIN, millis, &revents);
 		if (rv < 0) {
 			if (errno == EINTR) {
 				continue;
@@ -164,14 +282,14 @@ static ssize_t doRead(int fd,
 			break;
 		}
 		dqlite_assert(rv == 1);
-		if (pfd.revents != POLLIN) {
+		if (revents != CLIENT_POLLIN) {
 			/* If some other bits are set in the out parameter, an
 			 * error occurred. */
 			return -1;
 		}
 
-		n = read(fd, (char *)buf + (size_t)total,
-			 buf_len - (size_t)total);
+		n = clientReadFd(fd, (char *)buf + (size_t)total,
+			       buf_len - (size_t)total);
 		if (n < 0) {
 			if (errno == EINTR) {
 				continue;
@@ -203,15 +321,11 @@ static ssize_t doWrite(int fd,
 		       struct client_context *context)
 {
 	ssize_t total;
-	struct pollfd pfd;
 	struct timespec now;
 	long long millis;
 	ssize_t n;
+	int revents;
 	int rv;
-
-	pfd.fd = fd;
-	pfd.events = POLLOUT;
-	pfd.revents = 0;
 
 	total = 0;
 	while ((size_t)total < buf_len) {
@@ -232,7 +346,7 @@ static ssize_t doWrite(int fd,
 			 * indefinitely. */
 			millis = -1;
 		}
-		rv = poll(&pfd, 1, (millis > INT_MAX) ? INT_MAX : (int)millis);
+		rv = clientPollFd(fd, CLIENT_POLLOUT, millis, &revents);
 		if (rv < 0) {
 			if (errno == EINTR) {
 				continue;
@@ -244,14 +358,14 @@ static ssize_t doWrite(int fd,
 			break;
 		}
 		dqlite_assert(rv == 1);
-		if (pfd.revents != POLLOUT) {
+		if (revents != CLIENT_POLLOUT) {
 			/* If some other bits are set in the out parameter, an
 			 * error occurred. */
 			return -1;
 		}
 
-		n = write(fd, (char *)buf + (size_t)total,
-			  buf_len - (size_t)total);
+		n = clientWriteFd(fd, (char *)buf + (size_t)total,
+				buf_len - (size_t)total);
 		if (n < 0) {
 			if (errno == EINTR) {
 				continue;
@@ -333,7 +447,7 @@ void clientClose(struct client_proto *c)
 	if (c->fd == -1) {
 		return;
 	}
-	close(c->fd);
+	clientCloseFd(c->fd);
 	c->fd = -1;
 	buffer__close(&c->write);
 	buffer__close(&c->read);

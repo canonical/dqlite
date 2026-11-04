@@ -272,7 +272,7 @@ int uvLoadEntriesBatch(const struct raft_buffer *content,
 			      uvSizeofBatchHeader(n) - sizeof(uint64_t), NULL,
 			      errmsg);
 	if (rv != 0) {
-		ErrMsgWrapf(errmsg, "read header"); 
+		ErrMsgWrapf(errmsg, "read header");
 		rv = RAFT_IOERR;
 		goto err;
 	}
@@ -402,7 +402,7 @@ int uvSegmentLoadClosed(struct uv *uv,
 	}
 	if (format != UV__DISK_FORMAT) {
 		ErrMsgPrintf(uv->io->errmsg, "unexpected format version %ju",
-			     format);
+			     (uintmax_t)format);
 		rv = RAFT_CORRUPT;
 		goto err_after_read;
 	}
@@ -536,7 +536,7 @@ int uvSegmentLoadOpen(struct uv *uv,
 			}
 		}
 		ErrMsgPrintf(uv->io->errmsg, "unexpected format version %ju",
-			     format);
+			     (uintmax_t)format);
 		rv = RAFT_CORRUPT;
 		goto err_after_read;
 	}

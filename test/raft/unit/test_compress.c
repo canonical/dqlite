@@ -6,11 +6,14 @@
 #include "test/raft/lib/dir.h"
 
 #include <fcntl.h>
-#include <linux/limits.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <sys/random.h>
 #include <uv.h>
+
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 
 #ifdef LZ4_AVAILABLE
 #include <lz4frame.h> /* for LZ4F_HEADER_SIZE_MAX */
@@ -21,16 +24,10 @@ SUITE(compress)
 void *random_buffer(size_t len)
 {
 	void *result = munit_malloc(len);
-	size_t offset = 0;
-	while (offset < len) {
-		ssize_t r = getrandom((char *)result + offset, len - offset, 0);
-		if (r < 0) {
-			if (errno == EINTR)
-				continue;  // retry
-			free(result);
-			return NULL;
-		}
-		offset += (size_t)r;
+	int rv = uv_random(NULL, NULL, result, len, 0, NULL);
+	if (rv != 0) {
+		free(result);
+		return NULL;
 	}
 	return result;
 }
@@ -213,7 +210,7 @@ TEST(compress,
 	/* Split the buffer into many chunks of at most 4096 bytes */
 	size_t n_bufs = (len + 4095) / 4096;
 
-	TEST_COMPRESS("test", buf, len, n_bufs); 
+	TEST_COMPRESS("test", buf, len, n_bufs);
 
 	char path[PATH_MAX] = {};
 	int rv = UvOsJoin(f->dir, "test", path);

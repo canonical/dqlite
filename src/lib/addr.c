@@ -1,13 +1,71 @@
 #include "addr.h"
 
-#include <netdb.h>
+#include <errno.h>
+#include <limits.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
+#ifndef _WIN32
 #include <sys/un.h>
+#endif
 
 #include "../../include/dqlite.h"
+
+static int parseService(const char *service, int *port)
+{
+	char *end;
+	long value;
+
+	errno = 0;
+	value = strtol(service, &end, 10);
+	if (errno != 0 || end == service || *end != '\0' || value < 0 ||
+	    value > UINT16_MAX) {
+		return DQLITE_ERROR;
+	}
+	*port = (int)value;
+	return 0;
+}
+
+static char *dupRange(const char *start, size_t len)
+{
+	char *copy = malloc(len + 1);
+	if (copy == NULL) {
+		return NULL;
+	}
+	memcpy(copy, start, len);
+	copy[len] = '\0';
+	return copy;
+}
+
+static int parseMappedIpv4(const char *node,
+			   int port,
+			   struct sockaddr_in6 *addr)
+{
+	static const char prefix[] = "::ffff:";
+	struct sockaddr_in addr_in;
+	uint8_t mapped[16] = {0};
+	int rv;
+
+	if (strncmp(node, prefix, sizeof prefix - 1) != 0) {
+		return DQLITE_ERROR;
+	}
+
+	rv = uv_ip4_addr(node + sizeof prefix - 1, port, &addr_in);
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+
+	mapped[10] = 0xff;
+	mapped[11] = 0xff;
+	memcpy(&mapped[12], &addr_in.sin_addr, sizeof addr_in.sin_addr);
+
+	memset(addr, 0, sizeof *addr);
+	addr->sin6_family = AF_INET6;
+	addr->sin6_port = addr_in.sin_port;
+	memcpy(&addr->sin6_addr, mapped, sizeof mapped);
+	return 0;
+}
 
 int AddrParse(const char *input,
 	      struct sockaddr *addr,
@@ -19,12 +77,22 @@ int AddrParse(const char *input,
 	char *node = NULL;
 	size_t input_len = strlen(input);
 	char c = input[0];
+	int port;
+	struct sockaddr_in addr_in;
+	struct sockaddr_in6 addr_in6;
+	socklen_t required_len;
+	const char *addr_start, *close_bracket, *colon, *dot;
+#ifndef _WIN32
 	struct sockaddr_un *addr_un;
-	const char *name, *addr_start, *close_bracket, *colon;
+	const char *name;
 	size_t name_len;
-	struct addrinfo hints, *res;
+#endif
 
 	if (c == '@') {
+#ifdef _WIN32
+		(void)flags;
+		return DQLITE_MISUSE;
+#else
 		/* Unix domain address.
 		 * FIXME the use of the "abstract namespace" here is
 		 * Linux-specific */
@@ -32,7 +100,7 @@ int AddrParse(const char *input,
 			return DQLITE_MISUSE;
 		}
 		addr_un = (struct sockaddr_un *)addr;
-		if (*addr_len < sizeof(*addr_un)) {
+		if (*addr_len < (socklen_t)sizeof(*addr_un)) {
 			return DQLITE_ERROR;
 		}
 		name = input + 1;
@@ -53,6 +121,7 @@ int AddrParse(const char *input,
 		*addr_len = (socklen_t)offsetof(struct sockaddr_un, sun_path) +
 			    (socklen_t)name_len + 1;
 		return 0;
+#endif
 	} else if (c == '[') {
 		/* IPv6 address with port */
 		addr_start = input + 1;
@@ -65,14 +134,14 @@ int AddrParse(const char *input,
 			return DQLITE_ERROR;
 		}
 		service = colon + 1;
-		node =
-		    strndup(addr_start, (size_t)(close_bracket - addr_start));
-	} else if (memchr(input, '.', input_len)) {
+		node = dupRange(addr_start, (size_t)(close_bracket - addr_start));
+	} else if ((dot = memchr(input, '.', input_len)) != NULL &&
+		   ((colon = memchr(input, ':', input_len)) == NULL ||
+		    dot < colon)) {
 		/* IPv4 address */
-		colon = memchr(input, ':', input_len);
 		if (colon) {
 			service = colon + 1;
-			node = strndup(input, (size_t)(colon - input));
+			node = dupRange(input, (size_t)(colon - input));
 		} else {
 			node = strdup(input);
 		}
@@ -85,24 +154,41 @@ int AddrParse(const char *input,
 		return DQLITE_NOMEM;
 	}
 
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
-	rv = getaddrinfo(node, service, &hints, &res);
+	rv = parseService(service, &port);
 	if (rv != 0) {
-		rv = DQLITE_ERROR;
 		goto err_after_strdup;
 	}
-	if (res->ai_addrlen > *addr_len) {
-		rv = DQLITE_ERROR;
-		goto err_after_getaddrinfo;
-	}
-	memcpy(addr, res->ai_addr, res->ai_addrlen);
-	*addr_len = res->ai_addrlen;
 
-err_after_getaddrinfo:
-	freeaddrinfo(res);
+	if (memchr(node, ':', strlen(node)) != NULL) {
+		rv = uv_ip6_addr(node, port, &addr_in6);
+		if (rv != 0) {
+			rv = parseMappedIpv4(node, port, &addr_in6);
+		}
+		required_len = (socklen_t)sizeof addr_in6;
+		if (rv != 0) {
+			rv = DQLITE_ERROR;
+			goto err_after_strdup;
+		}
+		if (required_len > *addr_len) {
+			rv = DQLITE_ERROR;
+			goto err_after_strdup;
+		}
+		memcpy(addr, &addr_in6, (size_t)required_len);
+		*addr_len = required_len;
+	} else {
+		rv = uv_ip4_addr(node, port, &addr_in);
+		required_len = (socklen_t)sizeof addr_in;
+		if (rv != 0) {
+			rv = DQLITE_ERROR;
+			goto err_after_strdup;
+		}
+		if (required_len > *addr_len) {
+			rv = DQLITE_ERROR;
+			goto err_after_strdup;
+		}
+		memcpy(addr, &addr_in, (size_t)required_len);
+		*addr_len = required_len;
+	}
 
 err_after_strdup:
 	free(node);

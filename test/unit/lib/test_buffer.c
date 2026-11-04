@@ -1,4 +1,5 @@
 #include "../../../src/lib/buffer.h"
+#include "../../../src/lib/page_size.h"
 
 #include "../../lib/runner.h"
 
@@ -70,7 +71,7 @@ TEST_CASE(init, n_pages, NULL)
 	struct fixture *f = data;
 	(void)params;
 	ASSERT_N_PAGES(1);
-	munit_assert_long(f->buffer.page_size, ==, sysconf(_SC_PAGESIZE));
+	munit_assert_uint(f->buffer.page_size, ==, pageSize());
 	return MUNIT_OK;
 }
 

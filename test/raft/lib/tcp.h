@@ -39,6 +39,9 @@ void TcpServerClose(struct TcpServer *s);
 /* Accept inbound client connection and return the relevant socket. */
 int TcpServerAccept(struct TcpServer *s);
 
+/* Close a socket returned by TcpServerAccept. */
+void TcpServerCloseAccepted(int socket);
+
 /* Close the server socket. */
 void TcpServerStop(struct TcpServer *s);
 

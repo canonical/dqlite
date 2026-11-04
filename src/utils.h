@@ -28,23 +28,23 @@
 #define MACRO_CAT_HELPER(a, b) a##b
 #define MACRO_CAT(a, b) MACRO_CAT_HELPER(a, b)
 
-#define IN_1(E, X) E == X
-#define IN_2(E, X, ...) E == X || IN_1(E,__VA_ARGS__)
-#define IN_3(E, X, ...) E == X || IN_2(E,__VA_ARGS__)
-#define IN_4(E, X, ...) E == X || IN_3(E,__VA_ARGS__)
-#define IN_5(E, X, ...) E == X || IN_4(E,__VA_ARGS__)
-#define IN_6(E, X, ...) E == X || IN_5(E,__VA_ARGS__)
-#define IN_7(E, X, ...) E == X || IN_6(E,__VA_ARGS__)
-#define IN_8(E, X, ...) E == X || IN_7(E,__VA_ARGS__)
-#define IN_9(E, X, ...) E == X || IN_8(E,__VA_ARGS__)
+#define DQLITE_IN_1(E, X) E == X
+#define DQLITE_IN_2(E, X, ...) E == X || DQLITE_IN_1(E,__VA_ARGS__)
+#define DQLITE_IN_3(E, X, ...) E == X || DQLITE_IN_2(E,__VA_ARGS__)
+#define DQLITE_IN_4(E, X, ...) E == X || DQLITE_IN_3(E,__VA_ARGS__)
+#define DQLITE_IN_5(E, X, ...) E == X || DQLITE_IN_4(E,__VA_ARGS__)
+#define DQLITE_IN_6(E, X, ...) E == X || DQLITE_IN_5(E,__VA_ARGS__)
+#define DQLITE_IN_7(E, X, ...) E == X || DQLITE_IN_6(E,__VA_ARGS__)
+#define DQLITE_IN_8(E, X, ...) E == X || DQLITE_IN_7(E,__VA_ARGS__)
+#define DQLITE_IN_9(E, X, ...) E == X || DQLITE_IN_8(E,__VA_ARGS__)
 
 
 #define COUNT_ARGS_HELPER(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
 #define COUNT_ARGS(...) COUNT_ARGS_HELPER(__VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 
-#define GET_IN_MACRO(_1,_2,_3,_4,_5,_6,_7,_8,_9,NAME,...) NAME
-#define IN(E, ...) \
-  (MACRO_CAT(IN_, COUNT_ARGS(__VA_ARGS__)) (E, __VA_ARGS__))
+#define GET_DQLITE_IN_MACRO(_1,_2,_3,_4,_5,_6,_7,_8,_9,NAME,...) NAME
+#define DQLITE_IN(E, ...) \
+	(MACRO_CAT(DQLITE_IN_, COUNT_ARGS(__VA_ARGS__)) (E, __VA_ARGS__))
 
 #if defined(__has_attribute) && __has_attribute (noinline)
 # define DQLITE_NOINLINE __attribute__ ((noinline))

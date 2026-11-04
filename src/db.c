@@ -7,6 +7,7 @@
 #include "db.h"
 #include "lib/assert.h"
 #include "tracing.h"
+#include "vfs.h"
 
 /* Limit taken from sqlite unix vfs. */
 #define MAX_PATHNAME 512
@@ -26,7 +27,7 @@ static uint32_t str_hash(const char* name)
 int db__init(struct db *db, struct config *config, const char *filename)
 {
 	tracef("db init filename=`%s'", filename);
-	
+
 	sqlite3_vfs *vfs = sqlite3_vfs_find(config->vfs.name);
 	if (vfs == NULL) {
 		return DQLITE_MISUSE;
@@ -66,6 +67,13 @@ int db__open(struct db *db, sqlite3 **out)
 		sqlite3_close(conn);
 		return rv;
 	}
+#if defined(__APPLE__) && defined(__MACH__)
+	rv = VfsConfigureConnection(conn);
+	if (rv != SQLITE_OK) {
+		sqlite3_close(conn);
+		return rv;
+	}
+#endif
 	*out = conn;
 	return SQLITE_OK;
 }

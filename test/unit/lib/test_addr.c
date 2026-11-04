@@ -1,5 +1,9 @@
-#include <sys/socket.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <sys/un.h>
+#endif
 
 #include "../../../src/lib/addr.h"
 
@@ -9,7 +13,7 @@ TEST_MODULE(lib_addr);
 
 struct fixture
 {
-	struct sockaddr_un addr_un;
+	struct sockaddr_storage addr;
 };
 
 static void *setup(const MunitParameter params[], void *user_data)
@@ -26,13 +30,13 @@ static void tear_down(void *data)
 	free(f);
 }
 
-#define ASSERT_PARSE(ADDR, STATUS, FAMILY)                              \
-	socklen_t addr_len = sizeof(f->addr_un);                        \
-	int rv;                                                         \
-	rv = AddrParse(ADDR, (struct sockaddr *)&f->addr_un, &addr_len, \
-		       "8080", DQLITE_ADDR_PARSE_UNIX);                 \
-	munit_assert_int(rv, ==, STATUS);                               \
-	munit_assert_int(f->addr_un.sun_family, ==, FAMILY)
+#define ASSERT_PARSE(ADDR, STATUS, FAMILY)                         \
+	socklen_t addr_len = sizeof(f->addr);                        \
+	int rv;                                                    \
+	rv = AddrParse(ADDR, (struct sockaddr *)&f->addr, &addr_len, \
+		       "8080", DQLITE_ADDR_PARSE_UNIX);            \
+	munit_assert_int(rv, ==, STATUS);                          \
+	munit_assert_int(f->addr.ss_family, ==, FAMILY)
 
 TEST_SUITE(parse);
 TEST_SETUP(parse, setup);
@@ -70,6 +74,15 @@ TEST_CASE(parse, ipv6_with_port, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(parse, ipv6_mapped_ipv4, NULL)
+{
+	struct fixture *f = data;
+	(void)params;
+	ASSERT_PARSE("::ffff:127.0.0.1", 0, AF_INET6);
+	return MUNIT_OK;
+}
+
+#ifndef _WIN32
 TEST_CASE(parse, unix, NULL)
 {
 	struct fixture *f = data;
@@ -85,3 +98,4 @@ TEST_CASE(parse, unix_auto, NULL)
 	ASSERT_PARSE("@", 0, AF_UNIX);
 	return MUNIT_OK;
 }
+#endif

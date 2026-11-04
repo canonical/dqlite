@@ -4,6 +4,12 @@
 #include "../tracing.h"
 #include <unistd.h>
 
+#if defined(__APPLE__) && defined(__MACH__)
+void __assert_rtn(const char *, const char *, int, const char *)
+    __attribute__((__noreturn__));
+#define DQLITE_ASSERT_FAIL(assertion, file, line, function) \
+	__assert_rtn((assertion), (file), (int)(line), (function))
+#else
 /* This is necessary as dqlite is using -Werror, but glibc defines __assert_fail
  * with an unsigned __line argument while musl with an int. On one of them there
  * would be then a conversion which will generate a warning (turned into an
@@ -11,16 +17,22 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
+#define DQLITE_ASSERT_FAIL(assertion, file, line, function) \
+	__assert_fail((assertion), (file), (line), (function))
+#endif
+
 void dqlite_fail(const char *__assertion,
 		 const char *__file,
 		 unsigned int __line,
 		 const char *__function)
 {
 	dqlite_print_trace(1);
-	__assert_fail(__assertion, __file, __line, __function);
+	DQLITE_ASSERT_FAIL(__assertion, __file, __line, __function);
 }
 
+#if !(defined(__APPLE__) && defined(__MACH__))
 #pragma GCC diagnostic pop
+#endif
 
 #if defined(HAVE_BACKTRACE_H)
 #include <backtrace.h>
