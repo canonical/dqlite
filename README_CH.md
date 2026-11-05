@@ -5,7 +5,7 @@
 
 **注意**：中文文档有可能未及时更新，请以最新的英文[readme](./README.md)为准。
 
-[dqlite](https://dqlite.io)是一个用C语言开发的可嵌入的，支持流复制的数据库引擎，具备高可用性和自动故障转移功能。
+[dqlite](https://canonical.com/dqlite)是一个用C语言开发的可嵌入的，支持流复制的数据库引擎，具备高可用性和自动故障转移功能。
 
 “dqlite”是“distributed SQLite”的简写，即分布式SQLite。意味着dqlite通过网络协议扩展SQLite，将应用程序的各个实例连接在一起，让它们作为一个高可用的集群，而不依赖外部数据库。
 
@@ -33,11 +33,11 @@ documentation](https://github.com/canonical/go-dqlite#demo)。
 
 ## 视频
 
-在 FOSDEM 2020 上有一个关于dqlite的演讲视频，您可以在[此处](https://fosdem.org/2020/schedule/event/dqlite/)观看。
+在 FOSDEM 2020 上有一个关于dqlite的演讲视频，您可以在[此处](https://archive.fosdem.org/2020/schedule/event/dqlite/)观看。
 
 ## 网络协议
 
-如果您想编写客户端，请参阅[网络协议](https://dqlite.io/docs/protocol)文档。
+如果您想编写客户端，请参阅[网络协议](https://canonical.com/dqlite/docs/reference/wire-protocol)文档。
 
 ## 下载
 
