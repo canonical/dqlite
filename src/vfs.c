@@ -1693,8 +1693,8 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	/* mmap requires a map_size-aligned offset, but region_index may
 	 * arrive out of order when the WAL index has already been grown
 	 * by another connection. Round to the chunk boundary. */
-	const int start = (region_index / region_per_map_count) * region_per_map_count;
-	const off_t offset = (off_t)(start * region_size);
+	const int map_first_region = (region_index / region_per_map_count) * region_per_map_count;
+	const off_t offset = (off_t)(map_first_region * region_size);
 
 	mtx_lock(&s->mtx);
 	const off_t min_file_size = offset + (off_t)map_size;
@@ -1715,7 +1715,7 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 	mtx_unlock(&s->mtx);
 
-	while (f->mappedShmRegions.cap < start + region_per_map_count) {
+	while (f->mappedShmRegions.cap < map_first_region + region_per_map_count) {
 		int newCap = 2 * f->mappedShmRegions.cap + 1;
 		void **newPtr = sqlite3_realloc64(
 		    f->mappedShmRegions.ptr,
@@ -1731,25 +1731,24 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 		f->mappedShmRegions.ptr = newPtr;
 	}
 
-	for (int i = f->mappedShmRegions.len; i <= start;
+	for (int i = f->mappedShmRegions.len; i <= map_first_region;
 	     i += region_per_map_count) {
-		if (f->mappedShmRegions.ptr[i] != NULL) {
-			continue;
-		}
+		dqlite_assert(f->mappedShmRegions.ptr[i] == NULL);
 		void *region =
 		    mmap(NULL, (size_t)map_size, PROT_READ | PROT_WRITE,
 			 f->exclMask ? MAP_PRIVATE : MAP_SHARED, s->fd,
 			 (off_t)(i * VFS__WAL_INDEX_REGION_SIZE));
-		if (region == MAP_FAILED) {
-			return SQLITE_IOERR_SHMMAP;
-		}
+		dqlite_assert(region != MAP_FAILED);
 		for (int j = 0; j < region_per_map_count; j++) {
 			f->mappedShmRegions.ptr[i + j] =
 			    region + (j * VFS__WAL_INDEX_REGION_SIZE);
 		}
 	}
+	f->mappedShmRegions.len = map_first_region + region_per_map_count;
+	for (int i = 0; i < f->mappedShmRegions.len; i++) {
+		dqlite_assert(f->mappedShmRegions.ptr[i] != NULL);
+	}
 
-	f->mappedShmRegions.len = start + region_per_map_count;
 	*out = f->mappedShmRegions.ptr[region_index];
 	return SQLITE_OK;
 }
