@@ -19,6 +19,7 @@
 
 #define RAFT_GATEWAY_PARSE 0xff01 /* Internal use only */
 #define RAFT_GATEWAY_TAIL 0xff02  /* Internal use only */
+#define RAFT_GATEWAY_ROWS 0xff03  /* Internal use only */
 
 static bool is_statement_empty(sqlite3 *conn, const char *sql)
 {
@@ -232,6 +233,11 @@ static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
 
 	if (raft_rc == RAFT_GATEWAY_PARSE) {
 		return failure(req, SQLITE_ERROR, "bind parameters");
+	}
+
+	if (raft_rc == RAFT_GATEWAY_ROWS) {
+		return failure(req, SQLITE_ERROR,
+			       "rows yielded when none expected for EXEC request");
 	}
 
 	if (raft_rc == RAFT_GATEWAY_TAIL) {
@@ -498,6 +504,12 @@ static int exec_work(struct raft_io_async_work *work)
 	int rv = bind__params(exec->stmt, &req->decoder);
 	if (rv != DQLITE_OK) {
 		leader_exec_result(exec, RAFT_GATEWAY_PARSE);
+	} else if (!sqlite3_stmt_readonly(exec->stmt) &&
+		   sqlite3_column_count(exec->stmt) > 0) {
+		/* Writes returning rows (e.g. RETURNING) apply on the first
+		 * step, so they must be rejected before stepping.
+		 * Otherwise, the connection remains unusable. */
+		leader_exec_result(exec, RAFT_GATEWAY_ROWS);
 	} else {
 		req->parameters_bound = true;
 		rv = sqlite3_step(exec->stmt);
