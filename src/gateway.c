@@ -506,11 +506,9 @@ static int exec_work(struct raft_io_async_work *work)
 		leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 	} else if (!sqlite3_stmt_readonly(exec->stmt) &&
 		   sqlite3_column_count(exec->stmt) > 0) {
-		/* EXEC expects no rows, but a write that returns them (such as
-		 * one with a RETURNING clause) applies its changes on the first
-		 * step, before any row is seen. Rejecting it at that point
-		 * would leave the changes in the VFS without ever replicating
-		 * them, and the connection unusable. Reject it up front. */
+		/* Writes returning rows (e.g. RETURNING) apply on the first
+		 * step, so they must be rejected before stepping.
+		 * Otherwise, the connection remains unusable. */
 		leader_exec_result(exec, RAFT_GATEWAY_ROWS);
 	} else {
 		req->parameters_bound = true;
