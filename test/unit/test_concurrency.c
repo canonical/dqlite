@@ -610,6 +610,68 @@ TEST_CASE(query, tx, NULL)
 	return MUNIT_OK;
 }
 
+/* A QUERY_SQL write that times out waiting for another connection's write
+ * transaction must report SQLITE_BUSY, not a statement tail error. */
+TEST_CASE(query, sql_busy_wait_timeout, NULL)
+{
+	struct query_fixture *f = data;
+	(void)params;
+
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
+	f->servers[0].config.busy_timeout = 10;
+
+	PREPARE(f->c1, "BEGIN", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* make sure the write lock is taken */
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* a write with a returning clause from another connection should fail
+	 * with SQLITE_BUSY after some time */
+	QUERY_SQL(f->c2, "INSERT INTO test(n) VALUES(2) RETURNING n");
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
+	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
+
+	/* the original write should still finish correctly */
+	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	return MUNIT_OK;
+}
+
+/* A QUERY_SQL write that fails after being prepared but before running (here
+ * because the busy timer can't be started) must report the underlying error,
+ * not a statement tail error. */
+TEST_CASE(query, sql_busy_wait_timer_failed, NULL)
+{
+	struct query_fixture *f = data;
+	(void)params;
+
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
+	f->servers[0].config.busy_timeout = 10;
+
+	PREPARE(f->c1, "BEGIN IMMEDIATE", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	CLUSTER_RAFT(0)->io->timer_start = faultyStartTimer;
+	QUERY_SQL(f->c2, "INSERT INTO test(n) VALUES(1) RETURNING n");
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(f->c2, SQLITE_IOERR, "leader exec failed");
+
+	return MUNIT_OK;
+}
+
 struct delete_fixture {
 	FIXTURE_CLUSTER;
 };
