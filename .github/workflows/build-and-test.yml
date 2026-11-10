@@ -96,7 +96,7 @@ jobs:
           - ppc64el
           - riscv64
           - s390x
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v7
     - name: Set up cross-compilation for ${{ matrix.arch }}
