@@ -27,6 +27,7 @@ jobs:
     - name: Set up dependencies
       run: |
           sudo apt update
+          sudo apt upgrade -y
           sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev xfslibs-dev \
                               linux-libc-dev btrfs-progs xfsprogs zfsutils-linux \
                               lcov sqlite3
