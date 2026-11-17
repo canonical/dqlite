@@ -1987,7 +1987,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 	return;
 }
 
-inline bool replicationInstallSnapshotBusy(struct raft *r)
+bool replicationInstallSnapshotBusy(struct raft *r)
 {
 	return r->last_stored == 0 && r->snapshot.put.data != NULL;
 }
