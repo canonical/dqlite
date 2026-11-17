@@ -344,7 +344,7 @@ TEST_CASE(decoder, type, iso8601, NULL)
 	(void)data;
 	(void)params;
 
-	strcpy((char *)buf[1], "2018-07-20 09:49:05+00:00");
+	strcpy((char *)buf + 8, "2018-07-20 09:49:05+00:00");
 
 	DECODER_INIT(1);
 	DECODER_NEXT;
