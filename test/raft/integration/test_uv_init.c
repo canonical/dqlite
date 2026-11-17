@@ -72,7 +72,7 @@ static void closeCb(struct raft_io *io)
     {                                                            \
         uint8_t buf[8 * 4];                                      \
         void *cursor = buf;                                      \
-        char filename[strlen("metadataN") + 1];                  \
+        char filename[sizeof("metadataN")];                      \
         sprintf(filename, "metadata%d", N);                      \
         bytePut64(&cursor, FORMAT);                              \
         bytePut64(&cursor, VERSION);                             \

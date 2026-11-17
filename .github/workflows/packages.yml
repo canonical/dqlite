@@ -14,8 +14,8 @@ jobs:
         target:
           - jammy
           - noble
-          - plucky
-          - questing
+          - resolute
+          - stonking
     steps:
     - uses: actions/checkout@v7
       with:
