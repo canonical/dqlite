@@ -52,14 +52,29 @@ int raft_init(struct raft *r,
 	if (rv != 0) {
 		goto err;
 	}
-
-	r->io = io;
+	*r = (struct raft){
+		.tracer = NULL,
+		.io = io,
+		.fsm = fsm,
+		.id = id,
+		.current_term = 0,
+		.voted_for = 0,
+		.election_timeout = DEFAULT_ELECTION_TIMEOUT,
+		.heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT,
+		.install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT,
+		.state = RAFT_UNAVAILABLE,
+		.transfer = NULL,
+		.snapshot = {
+			.threshold = DEFAULT_SNAPSHOT_THRESHOLD,
+			.trailing = DEFAULT_SNAPSHOT_TRAILING,
+			.trailing_strategy = RAFT_TRAILING_STRATEGY_STATIC,
+		},
+		.max_catch_up_rounds = DEFAULT_MAX_CATCH_UP_ROUNDS,
+		.max_catch_up_round_duration =
+		    DEFAULT_MAX_CATCH_UP_ROUND_DURATION,
+	};
 	r->io->data = r;
-	r->fsm = fsm;
 
-	r->tracer = NULL;
-
-	r->id = id;
 	/* Make a copy of the address */
 	r->address = RaftHeapMalloc(strlen(address) + 1);
 	if (r->address == NULL) {
@@ -67,8 +82,7 @@ int raft_init(struct raft *r,
 		goto err;
 	}
 	strcpy(r->address, address);
-	r->current_term = 0;
-	r->voted_for = 0;
+
 	r->log = logInit();
 	if (r->log == NULL) {
 		rv = RAFT_NOMEM;
@@ -77,31 +91,10 @@ int raft_init(struct raft *r,
 
 	raft_configuration_init(&r->configuration);
 	raft_configuration_init(&r->configuration_last_snapshot);
-	r->configuration_committed_index = 0;
-	r->configuration_uncommitted_index = 0;
-	r->election_timeout = DEFAULT_ELECTION_TIMEOUT;
-	r->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
-	r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
-	r->commit_index = 0;
-	r->last_applied = 0;
-	r->last_stored = 0;
-	r->state = RAFT_UNAVAILABLE;
-	r->leader_state.voter_contacts = 0;
 	rv = raftInitCallbacks(r);
 	if (rv != 0) {
 		goto err_after_address_alloc;
 	}
-	r->transfer = NULL;
-	r->snapshot.pending.term = 0;
-	r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
-	r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
-	r->snapshot.trailing_strategy = RAFT_TRAILING_STRATEGY_STATIC;
-	r->snapshot.put.data = NULL;
-	r->close_cb = NULL;
-	memset(r->errmsg, 0, sizeof r->errmsg);
-	r->pre_vote = false;
-	r->max_catch_up_rounds = DEFAULT_MAX_CATCH_UP_ROUNDS;
-	r->max_catch_up_round_duration = DEFAULT_MAX_CATCH_UP_ROUND_DURATION;
 	rv = r->io->init(r->io, r->id, r->address);
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
@@ -183,12 +176,13 @@ void raft_set_snapshot_trailing(struct raft *r, unsigned n)
 void raft_set_snapshot_trailing_strategy(struct raft *r, int strategy)
 {
 	switch (strategy) {
-	case RAFT_TRAILING_STRATEGY_STATIC:
-	case RAFT_TRAILING_STRATEGY_DYNAMIC:
-		r->snapshot.trailing_strategy = (uint8_t)strategy;
-		break;
-	default:
-		r->snapshot.trailing_strategy = RAFT_TRAILING_STRATEGY_STATIC;
+		case RAFT_TRAILING_STRATEGY_STATIC:
+		case RAFT_TRAILING_STRATEGY_DYNAMIC:
+			r->snapshot.trailing_strategy = (uint8_t)strategy;
+			break;
+		default:
+			r->snapshot.trailing_strategy =
+			    RAFT_TRAILING_STRATEGY_STATIC;
 	}
 }
 
@@ -339,15 +333,15 @@ int raft_io_describe_last_entry(struct raft_io *io,
 	size_t n_entries;
 	int rv;
 
-	rv = io->load(io, &current_term, &voted_for, &snapshot,
-		      &start_index, &entries, &n_entries);
+	rv = io->load(io, &current_term, &voted_for, &snapshot, &start_index,
+		      &entries, &n_entries);
 	if (rv != 0) {
 		return rv;
 	}
 	*index = start_index + n_entries - 1;
-	*term = n_entries > 0 ? entries[n_entries - 1].term :
-		snapshot != NULL ? snapshot->term :
-		0;
+	*term = n_entries > 0      ? entries[n_entries - 1].term
+		: snapshot != NULL ? snapshot->term
+				   : 0;
 	if (snapshot != NULL) {
 		snapshotDestroy(snapshot);
 	}
@@ -356,17 +350,19 @@ int raft_io_describe_last_entry(struct raft_io *io,
 }
 
 RAFT_API int raft_timer_start(struct raft *r,
-				struct raft_timer *req,
-				uint64_t timeout, uint64_t repeat,
-				raft_timer_cb cb) {
+			      struct raft_timer *req,
+			      uint64_t timeout,
+			      uint64_t repeat,
+			      raft_timer_cb cb)
+{
 	if (r->io->version < 3) {
 		return RAFT_INVALID;
 	}
 	return r->io->timer_start(r->io, req, timeout, repeat, cb);
 }
 
-RAFT_API int raft_timer_stop(struct raft *r,
-				struct raft_timer *req) {
+RAFT_API int raft_timer_stop(struct raft *r, struct raft_timer *req)
+{
 	if (r->io->version < 3) {
 		return RAFT_INVALID;
 	}
