@@ -68,9 +68,10 @@ int dqlite__init(struct dqlite_node *d,
 {
 	int rv;
 
-	d->initialized = false;
-	d->lock_fd = -1;
-	memset(d->errmsg, 0, sizeof d->errmsg);
+	*d = (struct dqlite_node){
+		.initialized = false,
+		.lock_fd = -1,
+	};
 
 	rv = config__init(&d->config, id, address, dir);
 	if (rv != 0) {
