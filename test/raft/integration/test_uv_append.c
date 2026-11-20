@@ -602,6 +602,7 @@ TEST(append, ioSetupError, setUp, tearDown, 0, NULL)
     }
     APPEND_FAILURE(1, 64, RAFT_TOOMANY,
                    "setup writer for open-1: AIO events user limit exceeded");
+    AioDestroy(ctx);
     return MUNIT_OK;
 }
 
