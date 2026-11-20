@@ -53,17 +53,13 @@ int raft_init(struct raft *r,
 		goto err;
 	}
 	*r = (struct raft){
-		.tracer = NULL,
 		.io = io,
 		.fsm = fsm,
 		.id = id,
-		.current_term = 0,
-		.voted_for = 0,
 		.election_timeout = DEFAULT_ELECTION_TIMEOUT,
 		.heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT,
 		.install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT,
 		.state = RAFT_UNAVAILABLE,
-		.transfer = NULL,
 		.snapshot = {
 			.threshold = DEFAULT_SNAPSHOT_THRESHOLD,
 			.trailing = DEFAULT_SNAPSHOT_TRAILING,

@@ -1401,7 +1401,6 @@ int dqlite_server_set_connect_func(dqlite_server *server,
 static void trace_callback(void *data, const struct raft_trace *trace) {
 	dqlite_assert(data && trace);
 	dqlite_server *server = (dqlite_server *)data;
-	dqlite_assert(server);
 
 	const struct dqlite_trace t = {
 		.state = trace->state,
