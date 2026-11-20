@@ -189,6 +189,35 @@ TEST(raft_start, singleVotingSelfElect, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* When a single voting server self-elects, it starts a new term just like a
+ * regular election would, instead of reusing the term it was started with. */
+TEST(raft_start, singleVotingSelfElectIncrementsTerm, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_BOOTSTRAP;
+    CLUSTER_START;
+    munit_assert_int(CLUSTER_STATE(0), ==, RAFT_LEADER);
+    /* Bootstrapping persists term 1, self-election moves to term 2. */
+    munit_assert_ullong(CLUSTER_TERM(0), ==, 2);
+    munit_assert_ullong(CLUSTER_RAFT(0)->voted_for, ==, CLUSTER_RAFT(0)->id);
+    CLUSTER_MAKE_PROGRESS;
+    return MUNIT_OK;
+}
+
+/* A one-node cluster restarted with a persisted term T leads in term T + 1, so
+ * two consecutive leaderships never share a term. */
+TEST(raft_start, singleVotingRestartIncrementsTerm, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_BOOTSTRAP;
+    CLUSTER_SET_TERM(0, 5);
+    CLUSTER_START;
+    munit_assert_int(CLUSTER_STATE(0), ==, RAFT_LEADER);
+    munit_assert_ullong(CLUSTER_TERM(0), ==, 6);
+    CLUSTER_MAKE_PROGRESS;
+    return MUNIT_OK;
+}
+
 /* There are two servers in the cluster, one is voting and the other is
  * not. When started, the non-voting server does not elects itself. */
 TEST(raft_start, singleVotingNotUs, setUp, tearDown, 0, NULL)

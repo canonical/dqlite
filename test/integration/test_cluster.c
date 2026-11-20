@@ -174,7 +174,9 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint64(expected_entries, <=, last_entry_index);
 	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers);
-	munit_assert_uint64(last_entry_term, ==, 1);
+	/* Term 1 is the bootstrap term; the first node's self-election as the
+	 * only voter bumps it to 2. */
+	munit_assert_uint64(last_entry_term, ==, 2);
 	test_server_run(first);
 
 	/* The full table is visible from the new node */
@@ -200,7 +202,9 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint64(expected_entries + 1, <=, last_entry_index);
 	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers + 1);
-	munit_assert_uint64(last_entry_term, ==, 1);
+	/* The second node became the only voter and self-elected, which must
+	 * start a new term rather than reuse the first leader's. */
+	munit_assert_uint64(last_entry_term, ==, 3);
 	test_server_run(second);
 	return MUNIT_OK;
 }
