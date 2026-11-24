@@ -1664,3 +1664,56 @@ TEST(vfs_extra, delete_multiple, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+TEST(vfs_extra, multiregion_wal_index, setUp, tearDown, 0, NULL)
+{
+	/* Create a slow reader connection to hold a read lock. */
+	sqlite3 *slow_reader;
+	sqlite3 *writer;
+	sqlite3 *late_reader;
+	sqlite3_stmt *stmt;
+	struct vfsTransaction tx;
+
+	OPEN("1", slow_reader);
+	EXEC(slow_reader, "BEGIN");
+	PREPARE(slow_reader, stmt, "PRAGMA user_version");
+	STEP(stmt, SQLITE_ROW);
+	FINALIZE(stmt);
+
+	OPEN("1", writer);
+
+	EXEC(writer, "CREATE TABLE test(data BLOB)");
+	POLL(writer, tx);
+	APPLY(writer, tx);
+	DONE(tx);
+
+	for (int i = 0; i < 20; i++) {
+		EXEC(writer, "WITH RECURSIVE seq(n) AS ("
+			              "  SELECT 1 UNION ALL      "
+			              "  SELECT n+1 FROM seq     "
+			              "  WHERE n < 1000          "
+			              ")                         "
+			              "INSERT INTO test(data)    "
+			              "SELECT randomblob(4096) FROM seq");
+		POLL(writer, tx);
+		APPLY(writer, tx);
+		DONE(tx);
+	}
+
+	EXEC(writer, "PRAGMA user_version = 10");
+	POLL(writer, tx);
+	APPLY(writer, tx);
+	DONE(tx);
+
+	CLOSE(writer);
+
+	OPEN("1", late_reader);
+	PREPARE(late_reader, stmt, "PRAGMA user_version");
+	STEP(stmt, SQLITE_ROW);
+	FINALIZE(stmt);
+	CLOSE(late_reader);
+
+	CLOSE(slow_reader);
+
+	return MUNIT_OK;
+}

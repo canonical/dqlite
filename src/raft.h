@@ -579,38 +579,6 @@ struct raft_io_async_work
 	raft_io_async_work_cb cb; /* Request callback */
 };
 
-/**
- * Customizable tracer, for debugging purposes.
- */
-struct raft_tracer
-{
-	/**
-	 * Implementation-defined state object.
-	 */
-	void *impl;
-
-	/**
-	 * Whether this tracer should emit messages.
-	 */
-	bool enabled;
-
-	/**
-	 * Trace level.
-	 */
-	unsigned level;
-
-	/**
-	 * Emit the given trace message, possibly decorating it with the
-	 * provided metadata.
-	 */
-	void (*emit)(struct raft_tracer *t,
-		     const char *file,
-		     unsigned int line,
-		     const char *func,
-		     unsigned int level,
-		     const char *message);
-};
-
 struct raft_io; /* Forward declaration. */
 
 /**
@@ -839,6 +807,18 @@ struct raft_leader_state {
 						are in contact with */
 };
 
+struct raft_trace {
+	enum raft_state state;
+	raft_term term;
+	raft_index last_stored, commit_index, last_applied;
+	raft_id known_leader_id, voted_for;
+};
+
+/**
+ * Callback invoked by raft when raft state changes, with the details of the new state.
+ */
+typedef void (*raft_trace_cb)(void *data, const struct raft_trace *trace);
+
 /**
  * Hold and drive the state of a single raft server in a cluster.
  * When replacing reserved fields in the middle of this struct, you MUST use a
@@ -1031,8 +1011,8 @@ struct raft {
 	 * user-supplied callbacks. */
 	uint64_t callbacks;
 
-	/* Future extensions */
-	uint64_t reserved[31];
+	void *trace_data;
+	raft_trace_cb trace_cb;
 };
 
 RAFT_API int raft_init(struct raft *r,
@@ -1048,6 +1028,17 @@ RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
  * @cb will be called every time the raft state changes.
  */
 RAFT_API void raft_register_state_cb(struct raft *r, raft_state_cb cb);
+
+/**
+ * Register a callback to be invoked whenever the raft state changes.
+ * This function MUST be called after raft_init and before raft_start.
+ *
+ * @cb will be called with the provided @data pointer and a snapshot of the current raft state.
+ * It is expected that the callback will not block and will return as soon as possible, since
+ * it is called in the main loop of raft. If the callback needs to perform blocking operations,
+ * it should offload them to another thread or process.
+ */
+RAFT_API void raft_register_trace_cb(struct raft *r, raft_trace_cb cb, void *data);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance must
@@ -1394,6 +1385,7 @@ RAFT_API int raft_timer_start(struct raft *r,
 RAFT_API int raft_timer_stop(struct raft *r,
 				struct raft_timer *req);
 
+
 /**
  * User-definable dynamic memory allocation functions.
  *
@@ -1559,12 +1551,6 @@ RAFT_API int raft_uv_set_snapshot_compression(struct raft_io *io,
  */
 RAFT_API void raft_uv_set_connect_retry_delay(struct raft_io *io,
 					      unsigned msecs);
-
-/**
- * Emit low-level debug messages using the given tracer.
- */
-RAFT_API void raft_uv_set_tracer(struct raft_io *io,
-				 struct raft_tracer *tracer);
 
 /**
  * Enable or disable auto-recovery on startup. Default enabled.

@@ -8,6 +8,11 @@
 static int value_type(sqlite3_stmt *stmt, int i)
 {
 	int type = sqlite3_column_type(stmt, i);
+
+	if (type == SQLITE_NULL) {
+		return SQLITE_NULL;
+	}
+
 	const char *column_type_name = sqlite3_column_decltype(stmt, i);
 	if (column_type_name != NULL) {
 		if ((strcasecmp(column_type_name, "DATETIME") == 0) ||
@@ -16,12 +21,11 @@ static int value_type(sqlite3_stmt *stmt, int i)
 			if (type == SQLITE_INTEGER) {
 				type = DQLITE_UNIXTIME;
 			} else {
-				dqlite_assert(type == SQLITE_TEXT ||
-				       type == SQLITE_NULL);
+				dqlite_assert(type == SQLITE_TEXT);
 				type = DQLITE_ISO8601;
 			}
 		} else if (strcasecmp(column_type_name, "BOOLEAN") == 0) {
-			dqlite_assert(type == SQLITE_INTEGER || type == SQLITE_NULL);
+			dqlite_assert(type == SQLITE_INTEGER);
 			type = DQLITE_BOOLEAN;
 		}
 	}
@@ -97,6 +101,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 
 int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 {
+	size_t offset = buffer__offset(buffer);
 	int column_count;
 	char *cursor;
 	int rc;
@@ -117,7 +122,8 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 		const char *name = sqlite3_column_name(stmt, i);
 		cursor = buffer__advance(buffer, text__sizeof(&name));
 		if (cursor == NULL) {
-			return SQLITE_NOMEM;
+			rc = SQLITE_NOMEM;
+			goto out;
 		}
 		text__encode(&name, &cursor);
 	}
@@ -142,5 +148,11 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 
 	} while (1);
 
+out:
+	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+		/* Discard partial rows, preserving the response header. */
+		buffer__reset(buffer);
+		buffer__advance(buffer, offset);
+	}
 	return rc;
 }

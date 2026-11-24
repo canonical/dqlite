@@ -198,9 +198,16 @@ static int decodeDatabase(const struct registry *r,
 		tracef("main_size + wal_size would overflow max DB size");
 		return RAFT_INVALID;
 	}
+	if (header.main_size + header.wal_size > cursor->cap) {
+		tracef("main_size + wal_size exceeds payload");
+		return RAFT_INVALID;
+	}
 
 	const size_t page_size = r->config->vfs.page_size;
-	dqlite_assert((header.main_size % page_size) == 0);
+	if (header.main_size % page_size != 0) {
+		tracef("main_size not aligned to page_size");
+		return RAFT_INVALID;
+	}
 
 	size_t main_page_count = (size_t)header.main_size / page_size;
 	void **pages = raft_malloc(sizeof(void *) * main_page_count);
@@ -219,8 +226,12 @@ static int decodeDatabase(const struct registry *r,
 		const size_t wal_frame_size = page_size + wal_frame_header_size;
 
 		dqlite_assert(header.wal_size > wal_header_size);
-		dqlite_assert(((header.wal_size - (size_t)wal_header_size) %
-			       wal_frame_size) == 0);
+		if ((header.wal_size - (size_t)wal_header_size) %
+		    wal_frame_size != 0) {
+			tracef("wal_size not aligned to frame size");
+			raft_free(pages);
+			return RAFT_INVALID;
+		}
 
 		const unsigned n_frames =
 		    (unsigned)((header.wal_size - (size_t)wal_header_size) /

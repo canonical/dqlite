@@ -12,8 +12,10 @@ jobs:
         os:
           - ubuntu-22.04
           - ubuntu-24.04
+          - ubuntu-26.04
           - ubuntu-22.04-arm
           - ubuntu-24.04-arm
+          - ubuntu-26.04-arm
         compiler:
           - gcc
           - clang
@@ -25,6 +27,7 @@ jobs:
     - name: Set up dependencies
       run: |
           sudo apt update
+          sudo apt upgrade -y
           sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev xfslibs-dev \
                               linux-libc-dev btrfs-progs xfsprogs zfsutils-linux \
                               lcov sqlite3
@@ -94,7 +97,7 @@ jobs:
           - ppc64el
           - riscv64
           - s390x
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v7
     - name: Set up cross-compilation for ${{ matrix.arch }}

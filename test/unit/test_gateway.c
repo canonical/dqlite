@@ -1406,6 +1406,29 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	return MUNIT_OK;
 }
 
+/* A write with a RETURNING clause is rejected without taking effect, and the
+ * connection stays usable. */
+TEST_CASE(exec, unexpectedRowFromWrite, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	EXEC("CREATE TABLE test (n INT)");
+	PREPARE("INSERT INTO test(n) VALUES(1) RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR,
+		       "rows yielded when none expected for EXEC request");
+	FINALIZE(stmt_id);
+
+	EXEC("INSERT INTO test(n) VALUES(2)");
+	return MUNIT_OK;
+}
+
 TEST_CASE(exec, malformed_parameters, NULL)
 {
 	struct exec_fixture *f = data;
@@ -1669,6 +1692,27 @@ TEST_CASE(query, returning, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning_constraint, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	EXEC("CREATE UNIQUE INDEX test_n ON test(n)");
+	EXEC("INSERT INTO test(n) VALUES(123)");
+	PREPARE("INSERT INTO test(n) VALUES(123) RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_CONSTRAINT_UNIQUE, FAILURE);
+	ASSERT_FAILURE(SQLITE_CONSTRAINT_UNIQUE,
+		       "UNIQUE constraint failed: test.n");
+	munit_assert_size(f->cursor->cap, ==, 0);
 	return MUNIT_OK;
 }
 
@@ -2272,6 +2316,40 @@ TEST_CASE(exec_sql, single, NULL)
 	return MUNIT_OK;
 }
 
+/* A write with a RETURNING clause is rejected by EXEC_SQL because it yields a
+ * row. It must be rejected without taking effect, and the connection must stay
+ * usable afterwards. */
+TEST_CASE(exec_sql, returning_connection_usable, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	(void)params;
+
+	EXEC_SQL("CREATE TABLE test (n INT)");
+
+	EXEC_SQL_SUBMIT("INSERT INTO test(n) VALUES(1) RETURNING n");
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR,
+		       "rows yielded when none expected for EXEC request");
+
+	/* The rejected statement did not take effect. */
+	QUERY_SQL_SUBMIT("SELECT count(*) FROM test");
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 0);
+
+	EXEC_SQL("INSERT INTO test(n) VALUES(2)");
+	return MUNIT_OK;
+}
+
 /* Exec a SQL text with a single query. */
 TEST_CASE(exec_sql, empty1, NULL)
 {
@@ -2764,6 +2842,25 @@ TEST_CASE(query_sql, returning, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning_constraint, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+
+	EXEC("CREATE UNIQUE INDEX test_n ON test(n)");
+	EXEC("INSERT INTO test(n) VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test(n) VALUES(123) RETURNING n";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_CONSTRAINT_UNIQUE, FAILURE);
+	ASSERT_FAILURE(SQLITE_CONSTRAINT_UNIQUE,
+		       "UNIQUE constraint failed: test.n");
+	munit_assert_size(f->cursor->cap, ==, 0);
 	return MUNIT_OK;
 }
 

@@ -83,11 +83,14 @@ struct fixture
         }                                                         \
     }
 
-#define ACQUIRE(INDEX)                                 \
-    {                                                  \
-        int rv2;                                       \
-        rv2 = logAcquire(f->log, INDEX, &entries, &n); \
-        munit_assert_int(rv2, ==, 0);                  \
+#define ACQUIRE(INDEX) ACQUIRE_LIMIT(INDEX, LOG__ACQUIRE_UNLIMITED)
+
+/* Acquire entries from INDEX, stopping before LIMIT payload bytes. */
+#define ACQUIRE_LIMIT(INDEX, LIMIT)                           \
+    {                                                         \
+        int rv2;                                              \
+        rv2 = logAcquire(f->log, INDEX, &entries, &n, LIMIT); \
+        munit_assert_int(rv2, ==, 0);                         \
     }
 
 #define RELEASE(INDEX) logRelease(f->log, INDEX, entries, n);
@@ -812,8 +815,102 @@ TEST(logAcquire, oom, setUp, tearDown, 0, NULL)
     HeapFaultConfig(&f->heap, 0, 1);
     HeapFaultEnable(&f->heap);
 
-    rv = logAcquire(f->log, 1, &entries, &n);
+    rv = logAcquire(f->log, 1, &entries, &n, LOG__ACQUIRE_UNLIMITED);
     munit_assert_int(rv, ==, RAFT_NOMEM);
+
+    return MUNIT_OK;
+}
+
+/* Entries whose payloads sum to exactly the limit are all acquired. */
+TEST(logAcquire, limitExact, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_entry *entries;
+    unsigned n;
+
+    APPEND_MANY(1 /* term */, 3 /* n */); /* 8 bytes each */
+
+    ACQUIRE_LIMIT(1 /* index */, 24 /* limit */);
+    munit_assert_int(n, ==, 3);
+    ASSERT_REFCOUNT(3 /* index */, 2 /* count */);
+    RELEASE(1 /* index */);
+    ASSERT_REFCOUNT(3 /* index */, 1 /* count */);
+
+    return MUNIT_OK;
+}
+
+/* The entry that would take the total over the limit is left out, and holds
+ * no reference. */
+TEST(logAcquire, limitSplit, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_entry *entries;
+    unsigned n;
+
+    APPEND_MANY(1 /* term */, 3 /* n */); /* 8 bytes each */
+
+    ACQUIRE_LIMIT(1 /* index */, 23 /* limit */);
+    munit_assert_int(n, ==, 2);
+    ASSERT_REFCOUNT(2 /* index */, 2 /* count */);
+    ASSERT_REFCOUNT(3 /* index */, 1 /* count */);
+    RELEASE(1 /* index */);
+    ASSERT_REFCOUNT(2 /* index */, 1 /* count */);
+
+    /* The remainder is acquired from where the first batch stopped. */
+    ACQUIRE_LIMIT(3 /* index */, 23 /* limit */);
+    munit_assert_int(n, ==, 1);
+    RELEASE(3 /* index */);
+
+    return MUNIT_OK;
+}
+
+/* The first entry is acquired even when it alone exceeds the limit. */
+TEST(logAcquire, limitFirstEntry, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_entry *entries;
+    unsigned n;
+
+    APPEND_MANY(1 /* term */, 2 /* n */); /* 8 bytes each */
+
+    ACQUIRE_LIMIT(1 /* index */, 4 /* limit */);
+    munit_assert_int(n, ==, 1);
+    ASSERT_REFCOUNT(1 /* index */, 2 /* count */);
+    ASSERT_REFCOUNT(2 /* index */, 1 /* count */);
+    RELEASE(1 /* index */);
+
+    ACQUIRE_LIMIT(1 /* index */, 0 /* limit */);
+    munit_assert_int(n, ==, 1);
+    RELEASE(1 /* index */);
+
+    return MUNIT_OK;
+}
+
+/* The limit is applied across the wrap point of the circular buffer. */
+TEST(logAcquire, limitWrap, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_entry *entries;
+    unsigned n;
+
+    /* As in the wrap test: the log becomes [e7, e8, NULL, NULL, e5, e6]. */
+    APPEND_MANY(1 /* term */, 5 /* n */);
+    SNAPSHOT(4 /* last index */, 0 /* trailing */);
+    APPEND_MANY(1 /* term */, 3 /* n */);
+    ASSERT(6 /* size */, 4 /* front */, 2 /* back */, 4 /* offset */,
+           4 /* n */);
+
+    /* e5 and e6 sit before the wrap, e7 after it. */
+    ACQUIRE_LIMIT(5 /* index */, 16 /* limit */);
+    munit_assert_int(n, ==, 2);
+    RELEASE(5 /* index */);
+
+    ACQUIRE_LIMIT(6 /* index */, 16 /* limit */);
+    munit_assert_int(n, ==, 2);
+    munit_assert_int(entries[1].type, ==, RAFT_COMMAND);
+    ASSERT_REFCOUNT(7 /* index */, 2 /* count */);
+    ASSERT_REFCOUNT(8 /* index */, 1 /* count */);
+    RELEASE(6 /* index */);
 
     return MUNIT_OK;
 }

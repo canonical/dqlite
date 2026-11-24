@@ -767,10 +767,12 @@ struct sm *log_get_entry_sm(const struct raft_log *l,
 int logAcquire(struct raft_log *l,
 	       const raft_index index,
 	       struct raft_entry *entries[],
-	       unsigned *n)
+	       unsigned *n,
+	       size_t limit)
 {
 	size_t i;
 	size_t j;
+	size_t bytes = 0;
 
 	dqlite_assert(l != NULL);
 	dqlite_assert(index > 0);
@@ -807,6 +809,16 @@ int logAcquire(struct raft_log *l,
 
 	for (j = 0; j < *n; j++) {
 		size_t k = (i + j) % l->size;
+		size_t len = l->entries[k].buf.len;
+		if (j > 0 && (bytes > limit || len > limit - bytes)) {
+			/* Stop before the entry that would take us over the
+			 * limit (except for the first entry, which is always
+			 * let through). Leave remaining array slots unused
+			 * and without references. */
+			*n = (unsigned)j;
+			break;
+		}
+		bytes += len;
 		struct raft_entry *entry = &(*entries)[j];
 		*entry = l->entries[k];
 		refsIncr(l, entry->term, index + j);
