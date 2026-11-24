@@ -1,1 +1,1 @@
-Moved to the [website project](https://dqlite.io/docs).
+Moved to the [website project](https://canonical.com/dqlite/docs).
