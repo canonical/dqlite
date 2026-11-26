@@ -186,6 +186,24 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 	dqlite_assert(server->role == RAFT_VOTER);
 
 	if (n_voters == 1) {
+		/* Even though no election is needed, bump the term as a regular
+		 * election would, so that two consecutive leaderships of a
+		 * one-node cluster never share the same term. */
+		raft_term term = r->current_term + 1;
+		rv = r->io->set_term(r->io, term);
+		if (rv != 0) {
+			tracef("set_term failed %d", rv);
+			convertSetState(r, RAFT_FOLLOWER);
+			return rv;
+		}
+		rv = r->io->set_vote(r->io, r->id);
+		if (rv != 0) {
+			tracef("set_vote self failed %d", rv);
+			convertSetState(r, RAFT_FOLLOWER);
+			return rv;
+		}
+		r->current_term = term;
+		r->voted_for = r->id;
 		tracef("self elect and convert to leader");
 		return convertToLeader(r);
 	}
